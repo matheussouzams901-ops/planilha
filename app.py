@@ -6,6 +6,7 @@ import re
 import sqlite3
 from fpdf import FPDF
 from google import genai
+from google.genai import types
 import openpyxl
 import pandas as pd
 import plotly.express as px
@@ -297,7 +298,7 @@ def carregar_todas_abas(url: str):
   return pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
 
 
-def preparar_contexto_completo(dict_dfs, aba_atual_nome, prompt_usuario):
+def preparar_contexto_completo(dict_dfs):
   contexto_partes = []
   for nome_aba, dataframe in dict_dfs.items():
     contexto_partes.append(
@@ -586,7 +587,7 @@ if "dict_dfs" in st.session_state:
       "📄 Relatório Executivo PDF",
   ])
 
-  # --- MÓDULO 1: COPILOT IA ---
+  # --- MÓDULO 1: COPILOT IA (COM MEMÓRIA / HISTÓRICO CONTEXTUAL) ---
   with tab_copilot:
     st.caption("Converse em tempo real sobre os seus dados.")
 
@@ -603,9 +604,7 @@ if "dict_dfs" in st.session_state:
       if not api_key:
         st.error("Insira sua Gemini API Key no menu lateral.")
       else:
-        st.session_state["messages"].append(
-            {"role": "user", "content": prompt_user}
-        )
+        # Exibe mensagem do usuário imediatamente
         with st.chat_message("user"):
           st.markdown(prompt_user)
 
@@ -614,28 +613,61 @@ if "dict_dfs" in st.session_state:
             try:
               client = genai.Client(api_key=api_key)
               dados_contexto = preparar_contexto_completo(
-                  st.session_state["dict_dfs"], aba_nome, prompt_user
+                  st.session_state["dict_dfs"]
               )
 
-              contexto_prompt = f"""
-Você é um analista executivo de dados sênior. Responda à pergunta do usuário analisando os dados abaixo.
-DADOS DA PLANILHA:
+              # Instropõe instruções do sistema + os dados
+              system_instruction = f"""
+Você é um analista executivo de dados sênior. Responda com clareza, precisão e mantenha o histórico das conversas para responder perguntas de acompanhamento.
+
+DADOS DA PLANILHA PARA CONSULTA:
 {dados_contexto}
-
-PERGUNTA: {prompt_user}
 """
-              res = client.models.generate_content(
-                  model="gemini-3.6-flash", contents=contexto_prompt
+
+              # Monta o histórico de mensagens formatado para o SDK oficial da Google
+              contents = []
+              for msg in st.session_state["messages"]:
+                role_name = "user" if msg["role"] == "user" else "model"
+                contents.append(
+                    types.Content(
+                        role=role_name,
+                        parts=[types.Part.from_text(text=msg["content"])],
+                    )
+                )
+
+              # Adiciona a mensagem atual do usuário no final do histórico
+              contents.append(
+                  types.Content(
+                      role="user",
+                      parts=[types.Part.from_text(text=prompt_user)],
+                  )
               )
+
+              # Faz a requisição incluindo o histórico completo + system instruction
+              res = client.models.generate_content(
+                  model="gemini-3.6-flash",
+                  contents=contents,
+                  config=types.GenerateContentConfig(
+                      system_instruction=system_instruction
+                  ),
+              )
+
               st.markdown(res.text)
 
+              # Salva no histórico da sessão do Streamlit
+              st.session_state["messages"].append(
+                  {"role": "user", "content": prompt_user}
+              )
               st.session_state["messages"].append(
                   {"role": "assistant", "content": res.text}
               )
               st.session_state["ultimo_resumo_ia"] = res.text
+
+              # Salva no banco SQLite
               salvar_historico_chat(
                   st.session_state["username"], prompt_user, res.text
               )
+
             except Exception as e:
               st.error(f"Erro ao consultar IA: {e}")
 
