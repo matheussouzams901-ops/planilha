@@ -1,7 +1,7 @@
 import re
+from google import genai
 import pandas as pd
 import streamlit as st
-import google.generativeai as genai
 
 st.set_page_config(page_title="Gerenciador de Planilhas com IA", layout="wide")
 
@@ -31,20 +31,16 @@ if st.button("Carregar / Atualizar Planilha"):
     try:
       csv_url = get_csv_url(sheet_url)
       if csv_url:
-        # Salva o DataFrame na sessão do Streamlit
         st.session_state["df"] = pd.read_csv(csv_url)
         st.success("Planilha carregada com sucesso!")
       else:
         st.error("Link inválido do Google Sheets.")
     except Exception as e:
-      st.error(
-          "Erro ao carregar a planilha. Verifique se a permissão está como"
-          " 'Qualquer pessoa com o link'."
-      )
+      st.error(f"Erro ao carregar a planilha: {e}")
   else:
     st.warning("Por favor, cole o link da planilha.")
 
-# Se a planilha já estiver salva na memória, exibe e permite perguntas
+# Se a planilha estiver na memória
 if "df" in st.session_state:
   df = st.session_state["df"]
 
@@ -54,7 +50,6 @@ if "df" in st.session_state:
   st.markdown("---")
   st.markdown("### 2. Pergunte para a IA")
 
-  # Formulário para evitar que a página recarrega antes de terminar de digitar
   with st.form("form_pergunta"):
     query = st.text_input("O que deseja analisar ou consultar nesta planilha?")
     submitted = st.form_submit_button("Enviar Pergunta")
@@ -65,17 +60,21 @@ if "df" in st.session_state:
       elif not api_key:
         st.error("Por favor, insira sua API Key do Gemini na barra lateral.")
       else:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-
         with st.spinner("Analisando dados..."):
           try:
+            # Inicializa o cliente oficial com a chave informada
+            client = genai.Client(api_key=api_key)
+
             prompt = (
-                "Você é um assistente especialista em análise de dados. Com"
-                f" base nos dados a seguir:\n\n{df.to_string()}\n\nResponda:"
-                f" {query}"
+                "Você é um especialista em análise de dados. Com base nos"
+                f" dados a seguir:\n\n{df.to_string()}\n\nResponda: {query}"
             )
-            response = model.generate_content(prompt)
+
+            # Executa a chamada no modelo atualizado
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
 
             st.markdown("### 🤖 Resposta da IA:")
             st.write(response.text)
