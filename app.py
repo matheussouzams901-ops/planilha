@@ -62,7 +62,6 @@ if "df" in st.session_state:
       else:
         with st.spinner("Analisando dados..."):
           try:
-            # Inicializa o cliente oficial com a chave informada
             client = genai.Client(api_key=api_key)
 
             prompt = (
@@ -70,9 +69,9 @@ if "df" in st.session_state:
                 f" dados a seguir:\n\n{df.to_string()}\n\nResponda: {query}"
             )
 
-            # Executa a chamada no modelo atualizado
+            # Atualizado para o modelo gemini-3.6-flash
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 contents=prompt,
             )
 
