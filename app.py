@@ -1,4 +1,7 @@
+import base64
+from io import BytesIO
 import re
+from fpdf import FPDF
 from google import genai
 import pandas as pd
 import plotly.express as px
@@ -8,41 +11,75 @@ import streamlit as st
 # Configuração da Página
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="DataSight AI | BI & Analytics",
-    page_icon="📈",
+    page_title="DataSight Analytics Pro Enterprise",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Estilização CSS Customizada
+# Estilização CSS Customizada (Visual Dark/Light Moderno)
 st.markdown(
     """
     <style>
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
+    .stApp {
+        background-color: #fafafa;
     }
-    .stMetric {
-        background-color: #f8f9fa;
-        border: 1px solid #e9ecef;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    .metric-card {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
     }
-    div[data-testid="stSidebarHeader"] {
-        padding-top: 1rem;
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 8px 16px;
+        background-color: #ffffff;
     }
     </style>
 """,
-    unsafe_allow_html=True,  # CORRIGIDO AQUI
+    unsafe_allow_html=True,
 )
 
 
 # -----------------------------------------------------------------------------
-# Funções Auxiliares
+# Sistema de Autenticação / Login
+# -----------------------------------------------------------------------------
+def verificar_login():
+  """Validação simples de credenciais de acesso."""
+  if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+  if not st.session_state["logged_in"]:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+      st.subheader("🔐 Acesso Restrito | DataSight Enterprise")
+      usuario = st.text_input("Usuário")
+      senha = st.text_input("Senha", type="password")
+
+      # Você pode alterar o usuário e senha definidos aqui:
+      if st.button("Entrar", use_container_width=True):
+        if usuario == "admin" and senha == "admin123":
+          st.session_state["logged_in"] = True
+          st.success("Login efetuado com sucesso!")
+          st.rerun()
+        else:
+          st.error("Usuário ou senha incorretos.")
+    return False
+  return True
+
+
+if not verificar_login():
+  st.stop()  # Interrompe a execução do restante da tela caso não esteja logado
+
+
+# -----------------------------------------------------------------------------
+# Funções de Suporte (CSV e PDF)
 # -----------------------------------------------------------------------------
 def get_csv_url(url: str) -> str:
-  """Extrai o ID do Google Sheets e retorna a URL de exportação em CSV."""
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
   if match:
     sheet_id = match.group(1)
@@ -50,242 +87,329 @@ def get_csv_url(url: str) -> str:
   return None
 
 
+@st.cache_data(ttl=300)
 def carregar_dados(url: str) -> pd.DataFrame:
-  """Carrega os dados do CSV público do Google Sheets."""
   csv_url = get_csv_url(url)
   if not csv_url:
-    raise ValueError(
-        "Link do Google Sheets inválido. Certifique-se de que é um link válido."
+    raise ValueError("Link do Google Sheets inválido.")
+  return pd.read_csv(csv_url)
+
+
+def gerar_pdf(
+    df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Executivo"
+) -> bytes:
+  """Gera um PDF formatado contendo resumo de IA e métricas gerais."""
+  pdf = FPDF()
+  pdf.add_page()
+
+  # Cabeçalho
+  pdf.set_font("Helvetica", "B", 18)
+  pdf.set_text_color(30, 41, 59)
+  pdf.cell(0, 10, titulo, new_x="LMARGIN", new_y="NEXT", align="L")
+
+  pdf.set_font("Helvetica", "", 10)
+  pdf.set_text_color(100, 116, 139)
+  pdf.cell(
+      0,
+      10,
+      f"Gerado automaticamente por DataSight Analytics Pro",
+      new_x="LMARGIN",
+      new_y="NEXT",
+      align="L",
+  )
+  pdf.ln(5)
+
+  # Resumo das Métricas
+  pdf.set_font("Helvetica", "B", 14)
+  pdf.set_text_color(15, 23, 42)
+  pdf.cell(0, 10, "1. Métricas Chave", new_x="LMARGIN", new_y="NEXT")
+
+  pdf.set_font("Helvetica", "", 11)
+  pdf.set_text_color(51, 65, 85)
+  pdf.multi_cell(
+      0, 8, f"- Total de Registros Analisados: {len(df):,}\n- Total de Atributos/Colunas: {len(df.columns)}"
+  )
+  pdf.ln(5)
+
+  # Análise da IA
+  if resumo_ia:
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(
+        0, 10, "2. Diagnóstico Executivo de IA", new_x="LMARGIN", new_y="NEXT"
     )
-  df = pd.read_csv(csv_url)
-  return df
+
+    # Limpa caracteres não suportados por padrão na FPDF basica
+    texto_limpo = (
+        resumo_ia.encode("latin-1", "replace").decode("latin-1")
+    )
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(51, 65, 85)
+    pdf.multi_cell(0, 6, texto_limpo)
+
+  return pdf.output()
 
 
 # -----------------------------------------------------------------------------
-# Barra Lateral (Configurações)
+# Barra Lateral - Conexão, Filtros e Sessão
 # -----------------------------------------------------------------------------
 with st.sidebar:
-  st.title("⚙️ Configurações")
+  st.title("⚡ DataSight Pro")
+  st.caption("Enterprise BI & AI Assistant")
+
+  if st.button("🚪 Sair / Logout", use_container_width=True):
+    st.session_state["logged_in"] = False
+    st.rerun()
+
+  st.divider()
+
+  st.subheader("🔑 Autenticação AI")
   api_key = st.text_input(
       "Gemini API Key",
       type="password",
-      help="Obtenha sua chave gratuita em aistudio.google.com",
+      help="Chave de API do Google AI Studio",
   )
 
-  st.divider()
-  st.subheader("🔗 Conexão de Dados")
+  st.subheader("🔗 Fonte de Dados")
   sheet_url = st.text_input(
-      "Link do Google Sheets",
+      "Google Sheets URL",
       placeholder="https://docs.google.com/spreadsheets/d/...",
   )
 
-  btn_carregar = st.button("🔄 Conectar / Atualizar Dados", use_container_width=True)
+  col_btn1, col_btn2 = st.columns(2)
+  with col_btn1:
+    btn_carregar = st.button("🔄 Conectar", use_container_width=True)
+  with col_btn2:
+    if st.button("🧹 Limpar", use_container_width=True):
+      st.session_state.clear()
+      st.rerun()
 
   st.divider()
-  st.caption("🤖 Powered by Gemini & Streamlit")
+
+  # Filtros Globais na Sidebar
+  if "df_raw" in st.session_state:
+    st.subheader("🎯 Filtros Globais")
+    df_temp = st.session_state["df_raw"]
+
+    cols_categ = df_temp.select_dtypes(include=["object"]).columns.tolist()
+
+    filtros = {}
+    if cols_categ:
+      col_filtro = st.selectbox("Filtrar por coluna:", ["Nenhum"] + cols_categ)
+      if col_filtro != "Nenhum":
+        opcoes = df_temp[col_filtro].dropna().unique().tolist()
+        selecionados = st.multiselect(f"Valores em {col_filtro}:", opcoes)
+        if selecionados:
+          filtros[col_filtro] = selecionados
+
+    st.session_state["filtros"] = filtros
 
 # -----------------------------------------------------------------------------
-# Lógica Principal do App
+# Processamento de Dados
 # -----------------------------------------------------------------------------
 if btn_carregar:
   if sheet_url:
     try:
-      with st.spinner("Conectando ao Google Sheets..."):
-        st.session_state["df"] = carregar_dados(sheet_url)
-        st.toast("Dados atualizados com sucesso!", icon="✅")
+      with st.spinner("Carregando base de dados..."):
+        st.session_state["df_raw"] = carregar_dados(sheet_url)
+        st.session_state["messages"] = []
+        st.session_state["ultimo_resumo_ia"] = ""
+        st.toast("Base conectada com sucesso!", icon="⚡")
     except Exception as e:
-      st.error(f"Erro ao carregar planilha: {e}")
+      st.error(f"Falha na conexão: {e}")
   else:
-    st.warning("Insira o link da planilha na barra lateral.")
+    st.warning("Insira o link da planilha.")
 
-# Verificação de estado dos dados
-if "df" in st.session_state:
-  df = st.session_state["df"]
+# Aplicação dos Filtros nos Dados
+if "df_raw" in st.session_state:
+  df = st.session_state["df_raw"].copy()
 
-  # Cabeçalho Principal
-  st.title("📊 Painel de Análise de Dados")
-  st.caption(
-      "Visualize métricas, consulte informações e gere gráficos com"
-      " Inteligência Artificial."
-  )
+  if "filtros" in st.session_state and st.session_state["filtros"]:
+    for col, vals in st.session_state["filtros"].items():
+      df = df[df[col].isin(vals)]
 
   # ---------------------------------------------------------------------------
-  # Destaques / KPIs Automáticos
+  # Cabeçalho e KPIs
   # ---------------------------------------------------------------------------
-  col1, col2, col3, col4 = st.columns(4)
-  with col1:
-    st.metric(label="Total de Linhas", value=f"{len(df):,}")
-  with col2:
-    st.metric(label="Total de Colunas", value=len(df.columns))
-  with col3:
+  st.title("📊 Painel Executivo")
+
+  kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+  with kpi1:
+    st.metric(label="Registros Exibidos", value=f"{len(df):,}")
+  with kpi2:
+    st.metric(label="Total de Atributos", value=len(df.columns))
+  with kpi3:
     cols_num = df.select_dtypes(include=["number"]).columns
     if len(cols_num) > 0:
-      val = df[cols_num[0]].sum()
-      st.metric(
-          label=f"Soma ({cols_num[0]})",
-          value=f"{val:,.2f}" if isinstance(val, (int, float)) else str(val),
-      )
+      soma_val = df[cols_num[0]].sum()
+      st.metric(label=f"Total ({cols_num[0]})", value=f"{soma_val:,.2f}")
     else:
-      st.metric(label="Campos Numéricos", value="0")
-  with col4:
+      st.metric(label="Volume de Dados", value="Ativo")
+  with kpi4:
     st.metric(
-        label="Memória Utilizada", value=f"{df.memory_usage().sum() / 1024:.1f} KB"
+        label="Status do Filtro",
+        value=(
+            "Ativo"
+            if len(df) < len(st.session_state["df_raw"])
+            else "Sem Filtro"
+        ),
     )
 
   st.divider()
 
   # ---------------------------------------------------------------------------
-  # Abas de Funcionalidades
+  # Módulos Principais
   # ---------------------------------------------------------------------------
-  tab_ia, tab_graficos, tab_dados = st.tabs([
-      "🤖 Copiloto de IA",
-      "📈 Gerador de Gráficos",
-      "📋 Visualizar Planilha",
+  tab_copilot, tab_bi, tab_explorer, tab_export = st.tabs([
+      "💬 Copilot IA (Chat)",
+      "📈 Analytics & Gráficos",
+      "🗃️ Data Explorer",
+      "📄 Exportar Relatórios PDF",
   ])
 
-  # --- ABA 1: Copiloto de IA ---
-  with tab_ia:
-    st.subheader("Faça perguntas sobre seus dados")
-    st.write(
-        "A IA irá analisar toda a estrutura da planilha para responder suas"
-        " dúvidas."
-    )
+  # --- MÓDULO 1: CHAT INTERATIVO COM IA ---
+  with tab_copilot:
+    st.caption("Converse interativamente com seus dados em tempo real.")
 
-    with st.form("form_ia"):
-      pergunta = st.text_input(
-          "O que você deseja saber?",
-          placeholder="Ex: Qual cliente teve o maior faturamento? Qual a média de atendimento?",
-      )
-      btn_enviar_ia = st.form_submit_button(
-          "Analisar Dados", use_container_width=True
-      )
+    if "messages" not in st.session_state:
+      st.session_state["messages"] = []
 
-    if btn_enviar_ia:
+    for msg in st.session_state["messages"]:
+      with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+    if prompt_user := st.chat_input("Faça uma pergunta sobre a planilha..."):
       if not api_key:
-        st.error("Por favor, insira sua Gemini API Key na barra lateral.")
-      elif not pergunta:
-        st.warning("Digite uma pergunta.")
+        st.error("Insira sua Gemini API Key na barra lateral.")
       else:
-        with st.spinner("O Gemini está analisando sua solicitação..."):
-          try:
-            client = genai.Client(api_key=api_key)
+        st.session_state["messages"].append(
+            {"role": "user", "content": prompt_user}
+        )
+        with st.chat_message("user"):
+          st.markdown(prompt_user)
 
-            prompt = f"""
-Você é um consultor sênior em Business Intelligence e Análise de Dados.
-Analise a seguinte estrutura e amostra de dados:
+        with st.chat_message("assistant"):
+          with st.spinner("Analisando..."):
+            try:
+              client = genai.Client(api_key=api_key)
+              contexto_prompt = f"""
+Você é um analista executivo de dados. Responda à pergunta do usuário considerando os seguintes dados:
 
-AMOSTRA DOS DADOS (Primeiras 100 linhas):
+AMOSTRA DA BASE (até 100 linhas):
 {df.head(100).to_string()}
 
-SOLICITAÇÃO DO USUÁRIO:
-{pergunta}
-
-INSTRUÇÕES DE RESPOSTA:
-1. Seja direto, claro e profissional.
-2. Apresente números formatados e legíveis.
-3. Se fizer sentido, estruture a resposta usando marcadores (bullet points) ou tabelas em Markdown.
+PERGUNTA: {prompt_user}
 """
-            response = client.models.generate_content(
-                model="gemini-2.5-flash", contents=prompt
-            )
+              res = client.models.generate_content(
+                  model="gemini-2.5-flash", contents=contexto_prompt
+              )
+              st.markdown(res.text)
+              st.session_state["messages"].append(
+                  {"role": "assistant", "content": res.text}
+              )
+              st.session_state["ultimo_resumo_ia"] = res.text
+            except Exception as e:
+              st.error(f"Erro ao gerar resposta: {e}")
 
-            st.markdown("### 💡 Diagnóstico da IA")
-            st.info(response.text)
-          except Exception as e:
-            st.error(f"Erro ao processar consulta: {e}")
+  # --- MÓDULO 2: GERADOR DE GRÁFICOS ---
+  with tab_bi:
+    st.subheader("Geração de Visualizações com IA")
 
-  # --- ABA 2: Gerador de Gráficos ---
-  with tab_graficos:
-    st.subheader("Geração Automática de Gráficos")
-    st.write("Descreva o gráfico que você precisa e a IA irá construí-lo.")
-
-    with st.form("form_grafico"):
-      pedi_grafico = st.text_input(
-          "Como deseja visualizar os dados?",
-          placeholder="Ex: Crie um gráfico de barras mostrando a produção por tipo de serviço.",
+    with st.form("form_chart"):
+      prompt_chart = st.text_input(
+          "Descreva o gráfico desejado:",
+          placeholder="Ex: Monte um gráfico de rosca mostrando a distribuição de categorias.",
       )
-      btn_enviar_grafico = st.form_submit_button(
-          "Gerar Gráfico Interativo", use_container_width=True
+      btn_chart = st.form_submit_button(
+          "Construir Gráfico", use_container_width=True
       )
 
-    if btn_enviar_grafico:
+    if btn_chart:
       if not api_key:
-        st.error("Por favor, insira sua Gemini API Key na barra lateral.")
-      elif not pedi_grafico:
-        st.warning("Descreva o gráfico desejado.")
+        st.error("Insira sua API Key na barra lateral.")
+      elif not prompt_chart:
+        st.warning("Descreva o gráfico.")
       else:
-        with st.spinner("Construindo visualização..."):
+        with st.spinner("Gerando código de visualização..."):
           try:
             client = genai.Client(api_key=api_key)
+            prompt_code = f"""
+Escreva APENAS código Python executável usando plotly.express (px) para criar o gráfico solicitado.
+Armazene o objeto final do gráfico na variável 'fig'.
+Base de dados disponível no DataFrame 'df':
+{df.head(30).to_string()}
 
-            prompt = f"""
-Você é um desenvolvedor Python especialista em Plotly Express.
-Com base nesta estrutura de dados:
-{df.head(50).to_string()}
-
-A solicitação de gráfico é: {pedi_grafico}
-
-REGRAS RÍGIDAS:
-1. Escreva APENAS código Python executável usando `plotly.express` (como `px`).
-2. Atribua o gráfico final à variável `fig`.
-3. Use estilos visuais limpos e profissionais (`template='plotly_white'`).
-4. Retorne APENAS o bloco de código envolvido por ```python ... ``` sem explicações adicionais.
+Solicitação: {prompt_chart}
+Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
 """
-            response = client.models.generate_content(
-                model="gemini-2.5-flash", contents=prompt
+            res = client.models.generate_content(
+                model="gemini-2.5-flash", contents=prompt_code
             )
+            match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
 
-            match = re.search(
-                r"```python\s*(.*?)\s*```", response.text, re.DOTALL
-            )
             if match:
               codigo = match.group(1)
-              scope_local = {"df": df, "px": px}
-              exec(codigo, globals(), scope_local)
-
-              if "fig" in scope_local:
-                st.plotly_chart(scope_local["fig"], use_container_width=True)
-              else:
-                st.error("Não foi possível gerar a variável do gráfico.")
+              scope = {"df": df, "px": px}
+              exec(codigo, globals(), scope)
+              if "fig" in scope:
+                st.plotly_chart(scope["fig"], use_container_width=True)
             else:
-              st.warning("Resposta da IA:")
-              st.write(response.text)
-
+              st.write(res.text)
           except Exception as e:
-            st.error(f"Erro ao gerar gráfico: {e}")
+            st.error(f"Erro ao construir gráfico: {e}")
 
-  # --- ABA 3: Tabela de Dados ---
-  with tab_dados:
-    st.subheader("Explorador de Dados")
+  # --- MÓDULO 3: EXPLORADOR DE DADOS ---
+  with tab_explorer:
+    st.subheader("Visão Detalhada dos Dados")
+    st.dataframe(df, use_container_width=True, height=450)
 
-    termo_busca = st.text_input(
-        "🔎 Pesquisar termo na tabela:", placeholder="Digite para filtrar..."
+    col_down1, col_down2 = st.columns([1, 4])
+    with col_down1:
+      csv_data = df.to_csv(index=False).encode("utf-8")
+      st.download_button(
+          "📥 Exportar CSV",
+          data=csv_data,
+          file_name="relatorio_datasight.csv",
+          mime="text/csv",
+          use_container_width=True,
+      )
+
+  # --- MÓDULO 4: EXPORTAÇÃO DE RELATÓRIOS PDF ---
+  with tab_export:
+    st.subheader("📄 Geração de Relatório Executivo em PDF")
+    st.write(
+        "Gere um arquivo PDF formal contendo as métricas chave e o diagnóstico"
+        " gerado pela IA."
     )
 
-    df_display = df.copy()
-    if termo_busca:
-      mask = df_display.astype(str).apply(
-          lambda x: x.str.contains(termo_busca, case=False, na=False)
-      ).any(axis=1)
-      df_display = df_display[mask]
-
-    st.dataframe(df_display, use_container_width=True, height=450)
-
-    csv = df_display.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Baixar Dados Exibidos em CSV",
-        data=csv,
-        file_name="dados_filtrados.csv",
-        mime="text/csv",
+    titulo_relatorio = st.text_input(
+        "Título do Relatório", value="Relatório Executivo de Desempenho"
     )
+    resumo_pdf = st.text_area(
+        "Conteúdo / Diagnóstico para incluir no PDF",
+        value=st.session_state.get("ultimo_resumo_ia", ""),
+        height=150,
+        help="A última resposta gerada no Chat de IA é importada automaticamente aqui.",
+    )
+
+    if st.button("🔨 Gerar Arquivo PDF", use_container_width=True):
+      try:
+        pdf_bytes = gerar_pdf(
+            df=df, resumo_ia=resumo_pdf, titulo=titulo_relatorio
+        )
+        st.download_button(
+            label="📥 Baixar Relatório em PDF",
+            data=bytes(pdf_bytes),
+            file_name="Relatorio_Executivo.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+        st.success("PDF gerado com sucesso!")
+      except Exception as e:
+        st.error(f"Erro ao criar PDF: {e}")
 
 else:
-  st.info("👈 Para começar, conecte sua planilha do Google Sheets na barra lateral.")
-
-  st.markdown("""
-    ### 🚀 Como utilizar o Dashboard:
-    1. **Abra sua planilha do Google Sheets** e certifique-se de que o acesso está como *"Qualquer pessoa com o link"*.
-    2. **Copie o link** e cole no campo de conexão na barra lateral.
-    3. Informe sua **Gemini API Key**.
-    4. Clique em **Conectar / Atualizar Dados** para liberar todas as análises e gráficos!
-    """)
+  st.info(
+      "👈 Conecte uma planilha do Google Sheets na barra lateral para iniciar."
+  )
