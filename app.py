@@ -1,5 +1,5 @@
-import pandas as pd
 import re
+import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 
@@ -17,62 +17,67 @@ sheet_url = st.text_input(
 )
 
 
-# Função para extrair a chave da planilha e transformar em link CSV público
 def get_csv_url(url):
-  # Extrai o ID da planilha do link
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
   if match:
     sheet_id = match.group(1)
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
   return None
 
 
-if sheet_url:
-  try:
-    csv_url = get_csv_url(sheet_url)
-
-    if csv_url:
-      # Lê a planilha diretamente da nuvem
-      df = pd.read_csv(csv_url)
-
-      st.success("Planilha carregada com sucesso!")
-
-      # Exibe os dados
-      with st.expander("Ver dados da planilha", expanded=True):
-        st.dataframe(df)
-
-      # Área de perguntas para a IA
-      st.markdown("### 2. Pergunte para a IA")
-      query = st.text_input(
-          "O que deseja analisar ou consultar nesta planilha?"
+# Botão para carregar os dados
+if st.button("Carregar / Atualizar Planilha"):
+  if sheet_url:
+    try:
+      csv_url = get_csv_url(sheet_url)
+      if csv_url:
+        # Salva o DataFrame na sessão do Streamlit
+        st.session_state["df"] = pd.read_csv(csv_url)
+        st.success("Planilha carregada com sucesso!")
+      else:
+        st.error("Link inválido do Google Sheets.")
+    except Exception as e:
+      st.error(
+          "Erro ao carregar a planilha. Verifique se a permissão está como"
+          " 'Qualquer pessoa com o link'."
       )
+  else:
+    st.warning("Por favor, cole o link da planilha.")
 
-      if query:
-        if not api_key:
-          st.error("Por favor, insira sua API Key do Gemini na barra lateral.")
-        else:
-          genai.configure(api_key=api_key)
-          model = genai.GenerativeModel("gemini-1.5-flash")
+# Se a planilha já estiver salva na memória, exibe e permite perguntas
+if "df" in st.session_state:
+  df = st.session_state["df"]
 
-          with st.spinner("Analisando dados..."):
+  with st.expander("Ver dados da planilha", expanded=False):
+    st.dataframe(df)
+
+  st.markdown("---")
+  st.markdown("### 2. Pergunte para a IA")
+
+  # Formulário para evitar que a página recarrega antes de terminar de digitar
+  with st.form("form_pergunta"):
+    query = st.text_input("O que deseja analisar ou consultar nesta planilha?")
+    submitted = st.form_submit_button("Enviar Pergunta")
+
+    if submitted:
+      if not query:
+        st.warning("Digite uma pergunta.")
+      elif not api_key:
+        st.error("Por favor, insira sua API Key do Gemini na barra lateral.")
+      else:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        with st.spinner("Analisando dados..."):
+          try:
             prompt = (
                 "Você é um assistente especialista em análise de dados. Com"
-                f" base nos dados da planilha a seguir:\n\n{df.to_string()}\n\nResponda"
-                f" à seguinte solicitação: {query}"
+                f" base nos dados a seguir:\n\n{df.to_string()}\n\nResponda:"
+                f" {query}"
             )
-
             response = model.generate_content(prompt)
 
-            st.markdown("---")
             st.markdown("### 🤖 Resposta da IA:")
             st.write(response.text)
-    else:
-      st.error(
-          "Link inválido. Verifique se o link informado é do Google Planilhas."
-      )
-
-  except Exception as e:
-    st.error(
-        "Erro ao carregar a planilha. Certifique-se de que o acesso da planilha"
-        " está configurado como 'Qualquer pessoa com o link'."
-    )
+          except Exception as e:
+            st.error(f"Erro ao processar a pergunta: {e}")
