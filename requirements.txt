@@ -1,6 +1,7 @@
 streamlit
 pandas
-google-genai
-openpyxl
 plotly
+openpyxl
 fpdf2
+google-genai
+bcrypt
