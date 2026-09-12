@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilização CSS Customizada (Visual Dark/Light Moderno)
+# Estilização CSS Customizada
 st.markdown(
     """
     <style>
@@ -60,9 +60,8 @@ def verificar_login():
       usuario = st.text_input("Usuário")
       senha = st.text_input("Senha", type="password")
 
-      # Você pode alterar o usuário e senha definidos aqui:
       if st.button("Entrar", use_container_width=True):
-        if usuario == "Matheus" and senha == "admin123":
+        if usuario == "Matheus" and senha == "12345678":
           st.session_state["logged_in"] = True
           st.success("Login efetuado com sucesso!")
           st.rerun()
@@ -73,7 +72,7 @@ def verificar_login():
 
 
 if not verificar_login():
-  st.stop()  # Interrompe a execução do restante da tela caso não esteja logado
+  st.stop()
 
 
 # -----------------------------------------------------------------------------
@@ -112,7 +111,7 @@ def gerar_pdf(
   pdf.cell(
       0,
       10,
-      f"Gerado automaticamente por DataSight Analytics Pro",
+      "Gerado automaticamente por DataSight Analytics Pro",
       new_x="LMARGIN",
       new_y="NEXT",
       align="L",
@@ -127,7 +126,10 @@ def gerar_pdf(
   pdf.set_font("Helvetica", "", 11)
   pdf.set_text_color(51, 65, 85)
   pdf.multi_cell(
-      0, 8, f"- Total de Registros Analisados: {len(df):,}\n- Total de Atributos/Colunas: {len(df.columns)}"
+      0,
+      8,
+      f"- Total de Registros Analisados: {len(df):,}\n- Total de"
+      f" Atributos/Colunas: {len(df.columns)}",
   )
   pdf.ln(5)
 
@@ -139,10 +141,7 @@ def gerar_pdf(
         0, 10, "2. Diagnóstico Executivo de IA", new_x="LMARGIN", new_y="NEXT"
     )
 
-    # Limpa caracteres não suportados por padrão na FPDF basica
-    texto_limpo = (
-        resumo_ia.encode("latin-1", "replace").decode("latin-1")
-    )
+    texto_limpo = resumo_ia.encode("latin-1", "replace").decode("latin-1")
 
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(51, 65, 85)
@@ -302,7 +301,7 @@ AMOSTRA DA BASE (até 100 linhas):
 PERGUNTA: {prompt_user}
 """
               res = client.models.generate_content(
-                  model="gemini-2.5-flash", contents=contexto_prompt
+                  model="gemini-3.6-flash", contents=contexto_prompt
               )
               st.markdown(res.text)
               st.session_state["messages"].append(
@@ -344,7 +343,7 @@ Solicitação: {prompt_chart}
 Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
 """
             res = client.models.generate_content(
-                model="gemini-2.5-flash", contents=prompt_code
+                model="gemini-3.6-flash", contents=prompt_code
             )
             match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
 
