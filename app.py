@@ -12,7 +12,7 @@ import plotly.express as px
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# Configuração da Página e Tema Customizado
+# Configuração da Página e Estilização Visual Avançada
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="DataSight Analytics Pro Enterprise",
@@ -21,22 +21,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilização CSS Profissional
 st.markdown(
     """
     <style>
-    /* Fundo principal */
+    /* Estilo Geral da Aplicação */
     .stApp {
         background-color: #f8fafc;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    /* Cartões de KPI Customizados */
+    /* Cartões KPI Customizados */
     .kpi-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 20px;
+        padding: 18px 20px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
@@ -45,7 +44,7 @@ st.markdown(
         box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
     .kpi-title {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         color: #64748b;
         font-weight: 600;
         text-transform: uppercase;
@@ -57,14 +56,26 @@ st.markdown(
         font-weight: 700;
         margin-top: 4px;
     }
-    .kpi-sub {
+    .kpi-sub-pos {
         font-size: 0.8rem;
         color: #10b981;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+    .kpi-sub-neg {
+        font-size: 0.8rem;
+        color: #ef4444;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+    .kpi-sub-neu {
+        font-size: 0.8rem;
+        color: #64748b;
         font-weight: 500;
         margin-top: 4px;
     }
 
-    /* Ajustes em abas e botões */
+    /* Ajustes Finos de Botões e Tabs */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -375,12 +386,14 @@ with st.sidebar:
       )
       st.session_state["api_key"] = api_key
       st.session_state["sheet_url"] = sheet_url
-      st.success("Salvo!")
+      st.success("Salvo com sucesso!")
 
   st.subheader("📁 Conectar Dados")
   arquivo_local = st.file_uploader("Upload de Planilha", type=["xlsx", "csv"])
   btn_carregar = st.button(
-      "🔄 Atualizar Fonte de Dados", use_container_width=True, type="primary"
+      "🔄 Sincronizar Fonte de Dados",
+      use_container_width=True,
+      type="primary",
   )
 
 # -----------------------------------------------------------------------------
@@ -397,12 +410,12 @@ if btn_carregar or ("dict_dfs" not in st.session_state):
         )
       st.toast("Planilha local carregada!", icon="⚡")
     except Exception as e:
-      st.error(f"Erro: {e}")
+      st.error(f"Erro ao ler arquivo: {e}")
   elif sheet_url:
     try:
-      with st.spinner("Sincronizando com Google Sheets..."):
+      with st.spinner("Conectando ao Google Sheets..."):
         st.session_state["dict_dfs"] = carregar_todas_abas(sheet_url)
-        st.toast("Google Sheets conectado!", icon="⚡")
+        st.toast("Google Sheets sincronizado!", icon="⚡")
     except Exception as e:
       st.error(f"Erro na conexão: {e}")
 
@@ -414,44 +427,108 @@ if "dict_dfs" in st.session_state:
 
   c_title, c_aba = st.columns([3, 1])
   with c_aba:
-    aba_nome = st.selectbox("📑 Selecione a Aba:", lista_abas)
+    aba_nome = st.selectbox("📑 Aba do Excel:", lista_abas)
 
   df_original = st.session_state["dict_dfs"][aba_nome].copy()
 
-  # --- NOVO: FILTROS DINÂMICOS ---
-  with st.expander("🔍 Filtros Globais dos Dados", expanded=False):
+  # --- NOVO: FILTROS AVANÇADOS (CATEGÓRICOS + TEMPORAIS) ---
+  with st.expander("🔍 Filtros Globais Avançados (Data e Categorias)", expanded=True):
     f_col1, f_col2 = st.columns(2)
+    
+    df_filtrado = df_original.copy()
+    
+    # Detecção automática de colunas de data
+    cols_data = []
+    for c in df_original.columns:
+      if pd.api.types.is_datetime64_any_dtype(df_original[c]):
+        cols_data.append(c)
+      else:
+        # Tenta converter para datetime para testar
+        try:
+          parsed = pd.to_datetime(df_original[c], errors="coerce")
+          if parsed.notna().sum() > len(df_original) * 0.5:
+            df_original[c] = parsed
+            cols_data.append(c)
+        except Exception:
+          pass
+
     with f_col1:
-      col_filtro = st.selectbox(
-          "Filtrar por coluna:", ["(Nenhum)"] + list(df_original.columns)
-      )
+      if cols_data:
+        col_data_sel = st.selectbox("📅 Coluna Temporal Detectada:", cols_data)
+        min_date = df_original[col_data_sel].min()
+        max_date = df_original[col_data_sel].max()
+        
+        if pd.notna(min_date) and pd.notna(max_date):
+          intervalo_data = st.date_input(
+              "Intervalo de Datas:",
+              value=(min_date.date(), max_date.date()),
+              min_value=min_date.date(),
+              max_value=max_date.date()
+          )
+          if len(intervalo_data) == 2:
+            data_ini, data_fim = intervalo_data
+            mask_data = (df_original[col_data_sel].dt.date >= data_ini) & (df_original[col_data_sel].dt.date <= data_fim)
+            df_filtrado = df_filtrado[mask_data]
+      else:
+        st.info("Nenhuma coluna do tipo Data/Datetime identificada automaticamente.")
+
     with f_col2:
+      col_filtro = st.selectbox(
+          "Categorias / Coluna de Atributo:",
+          ["(Nenhum)"] + list(df_original.columns),
+      )
       if col_filtro != "(Nenhum)":
         valores_unicos = df_original[col_filtro].dropna().unique().tolist()
         val_selecionados = st.multiselect(
-            f"Valores de {col_filtro}:", valores_unicos
+            f"Valores de '{col_filtro}':", valores_unicos
         )
         if val_selecionados:
-          df = df_original[df_original[col_filtro].isin(val_selecionados)]
-        else:
-          df = df_original.copy()
-      else:
-        df = df_original.copy()
+          df_filtrado = df_filtrado[df_filtrado[col_filtro].isin(val_selecionados)]
+
+  df = df_filtrado
 
   with c_title:
     st.title(f"📊 Dashboard Executivo — {aba_nome}")
 
-  # --- NOVOS KPIs COM DESIGN CUSTOMIZADO (HTML/CSS) ---
+  # --- NOVOS KPIs COM VARIAÇÃO (DELTA) AUTOMÁTICA ---
   k1, k2, k3, k4 = st.columns(4)
   cols_num = df.select_dtypes(include=["number"]).columns
+
+  # Cálculo de variação da métrica principal (1ª metade x 2ª metade do conjunto)
+  delta_text = "Em relação ao período"
+  delta_class = "kpi-sub-neu"
+  soma_val = "N/A"
+  media_val = "N/A"
+  nome_col = cols_num[0] if len(cols_num) > 0 else "Métrica"
+
+  if len(cols_num) > 0:
+    val_total = df[cols_num[0]].sum()
+    soma_val = f"{val_total:,.2f}"
+    media_val = f"{df[cols_num[0]].mean():,.2f}"
+
+    # Dividir em duas metades para calcular variação percentual
+    metade = len(df) // 2
+    if metade > 0:
+      val_ant = df[cols_num[0]].iloc[:metade].sum()
+      val_rec = df[cols_num[0]].iloc[metade:].sum()
+      if val_ant > 0:
+        var_pct = ((val_rec - val_ant) / val_ant) * 100
+        if var_pct > 0:
+          delta_text = f"↑ +{var_pct:.1f}% vs período anterior"
+          delta_class = "kpi-sub-pos"
+        elif var_pct < 0:
+          delta_text = f"↓ {var_pct:.1f}% vs período anterior"
+          delta_class = "kpi-sub-neg"
+        else:
+          delta_text = "→ 0.0% sem variação"
 
   with k1:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">Total de Registros</div>
+            <div class="kpi-title">Linhas Filtradas</div>
             <div class="kpi-value">{len(df):,}</div>
-            <div class="kpi-sub">↑ Linhas ativas</div>
+            <div class="kpi-sub-neu">Base total: {len(df_original):,}</div>
         </div>
     """,
         unsafe_allow_html=True,
@@ -461,38 +538,33 @@ if "dict_dfs" in st.session_state:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">Total de Colunas</div>
+            <div class="kpi-title">Atributos</div>
             <div class="kpi-value">{len(df.columns)}</div>
-            <div class="kpi-sub">Atributos mapeados</div>
+            <div class="kpi-sub-neu">Colunas disponíveis</div>
         </div>
     """,
         unsafe_allow_html=True,
     )
 
   with k3:
-    soma_val = f"{df[cols_num[0]].sum():,.2f}" if len(cols_num) > 0 else "N/A"
-    nome_col = cols_num[0] if len(cols_num) > 0 else "Métrica"
     st.markdown(
         f"""
         <div class="kpi-card">
             <div class="kpi-title">Soma ({nome_col})</div>
             <div class="kpi-value">{soma_val}</div>
-            <div class="kpi-sub">Total acumulado</div>
+            <div class="{delta_class}">{delta_text}</div>
         </div>
     """,
         unsafe_allow_html=True,
     )
 
   with k4:
-    media_val = (
-        f"{df[cols_num[0]].mean():,.2f}" if len(cols_num) > 0 else "N/A"
-    )
     st.markdown(
         f"""
         <div class="kpi-card">
             <div class="kpi-title">Média ({nome_col})</div>
             <div class="kpi-value">{media_val}</div>
-            <div class="kpi-sub">Média por registro</div>
+            <div class="kpi-sub-neu">Média por item</div>
         </div>
     """,
         unsafe_allow_html=True,
@@ -500,10 +572,11 @@ if "dict_dfs" in st.session_state:
 
   st.divider()
 
-  # --- NAVEGAÇÃO POR ABAS DO DASHBOARD ---
-  tab_copilot, tab_bi, tab_explorer, tab_export = st.tabs([
+  # --- ABAS DE NAVEGAÇÃO ---
+  tab_copilot, tab_bi, tab_geo, tab_explorer, tab_export = st.tabs([
       "💬 Copilot IA (Chat)",
       "📈 Analytics & Visualizações",
+      "🗺️ Análise Geográfica / Locais",
       "🗃️ Explorador de Dados",
       "📄 Relatório Executivo PDF",
   ])
@@ -521,7 +594,7 @@ if "dict_dfs" in st.session_state:
       with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-    if prompt_user := st.chat_input("Pergunte sobre qualquer dia, aba ou valor..."):
+    if prompt_user := st.chat_input("Pergunte sobre qualquer dado ou aba..."):
       if not api_key:
         st.error("Insira sua Gemini API Key no menu lateral.")
       else:
@@ -532,7 +605,7 @@ if "dict_dfs" in st.session_state:
           st.markdown(prompt_user)
 
         with st.chat_message("assistant"):
-          with st.spinner("Analisando dados..."):
+          with st.spinner("Analisando com IA..."):
             try:
               client = genai.Client(api_key=api_key)
               dados_contexto = preparar_contexto_completo(
@@ -547,7 +620,7 @@ DADOS DA PLANILHA:
 PERGUNTA: {prompt_user}
 """
               res = client.models.generate_content(
-                  model="gemini-3.6-flash", contents=contexto_prompt
+                  model="gemini-2.5-flash", contents=contexto_prompt
               )
               st.markdown(res.text)
 
@@ -570,7 +643,7 @@ PERGUNTA: {prompt_user}
       with st.form("form_chart"):
         prompt_chart = st.text_area(
             "Descreva o gráfico desejado:",
-            placeholder="Ex: Crie um gráfico de barras com as vendas por categoria",
+            placeholder="Ex: Crie um gráfico de linhas mostrando a evolução de vendas no tempo",
         )
         btn_chart = st.form_submit_button(
             "Gerar Visualização", use_container_width=True, type="primary"
@@ -595,7 +668,7 @@ Solicitação: {prompt_chart}
 Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
 """
               res = client.models.generate_content(
-                  model="gemini-3.6-flash", contents=prompt_code
+                  model="gemini-2.5-flash", contents=prompt_code
               )
               match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
               if match:
@@ -607,16 +680,39 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
             except Exception as e:
               st.error(f"Erro ao gerar gráfico: {e}")
 
-  # --- MÓDULO 3: EXPLORADOR DE DADOS ---
+  # --- MÓDULO 3: NOVO - ANÁLISE GEOGRÁFICA ---
+  with tab_geo:
+    st.subheader("🗺️ Análise de Distribuição por Localidade")
+    cols_geo = [c for c in df.columns if any(p in c.lower() for p in ["estado", "uf", "cidade", "pais", "regiao", "local"])]
+    
+    if cols_geo and len(cols_num) > 0:
+      col_geo_sel = st.selectbox("Selecione a Coluna de Localidade:", cols_geo)
+      col_val_sel = st.selectbox("Selecione o Valor Métrica:", cols_num)
+      
+      df_geo = df.groupby(col_geo_sel)[col_val_sel].sum().reset_index().sort_values(by=col_val_sel, ascending=False)
+      fig_geo = px.bar(
+          df_geo, 
+          x=col_geo_sel, 
+          y=col_val_sel, 
+          color=col_val_sel,
+          title=f"Distribuição de {col_val_sel} por {col_geo_sel}",
+          template="plotly_white",
+          color_continuous_scale="Blues"
+      )
+      st.plotly_chart(fig_geo, use_container_width=True)
+    else:
+      st.info("Para ativar este mapa/visão, certifique-se de ter colunas de local (ex: Estado, Cidade, UF) e métricas numéricas na sua planilha.")
+
+  # --- MÓDULO 4: EXPLORADOR DE DADOS ---
   with tab_explorer:
     st.subheader(f"Tabela de Dados — {aba_nome}")
     st.dataframe(df, use_container_width=True, height=450)
 
-  # --- MÓDULO 4: EXPORTAÇÃO PDF ---
+  # --- MÓDULO 5: EXPORTAÇÃO PDF ---
   with tab_export:
     st.subheader("📄 Gerador de Relatório Executivo")
     resumo_pdf = st.text_area(
-        "Notas do Relatório / Resumo da IA",
+        "Diagnóstico / Notas do Relatório",
         value=st.session_state.get("ultimo_resumo_ia", ""),
         height=150,
     )
@@ -639,4 +735,4 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
         st.error(f"Erro ao gerar PDF: {e}")
 
 else:
-  st.info("👈 Conecte uma planilha na barra lateral para começar.")
+  st.info("👈 Conecte uma planilha na barra lateral para iniciar.")
