@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilização CSS Customizada (Visual Clean & Profissional)
+# Estilização CSS Customizada
 st.markdown(
     """
     <style>
@@ -34,7 +34,7 @@ st.markdown(
     }
     </style>
 """,
-    unsafe_allow_allow_html=True,
+    unsafe_allow_html=True,  # CORRIGIDO AQUI
 )
 
 
@@ -82,7 +82,7 @@ with st.sidebar:
   btn_carregar = st.button("🔄 Conectar / Atualizar Dados", use_container_width=True)
 
   st.divider()
-  st.caption("🤖 Powered by Gemini 3.8 Flash & Streamlit")
+  st.caption("🤖 Powered by Gemini & Streamlit")
 
 # -----------------------------------------------------------------------------
 # Lógica Principal do App
@@ -104,7 +104,10 @@ if "df" in st.session_state:
 
   # Cabeçalho Principal
   st.title("📊 Painel de Análise de Dados")
-  st.caption("Visualize métricas, consulte informações e gere gráficos com Inteligência Artificial.")
+  st.caption(
+      "Visualize métricas, consulte informações e gere gráficos com"
+      " Inteligência Artificial."
+  )
 
   # ---------------------------------------------------------------------------
   # Destaques / KPIs Automáticos
@@ -115,7 +118,6 @@ if "df" in st.session_state:
   with col2:
     st.metric(label="Total de Colunas", value=len(df.columns))
   with col3:
-    # Tenta identificar colunas numéricas para exibir soma/média
     cols_num = df.select_dtypes(include=["number"]).columns
     if len(cols_num) > 0:
       val = df[cols_num[0]].sum()
@@ -184,7 +186,7 @@ INSTRUÇÕES DE RESPOSTA:
 3. Se fizer sentido, estruture a resposta usando marcadores (bullet points) ou tabelas em Markdown.
 """
             response = client.models.generate_content(
-                model="gemini-3.8-flash", contents=prompt
+                model="gemini-2.5-flash", contents=prompt
             )
 
             st.markdown("### 💡 Diagnóstico da IA")
@@ -230,10 +232,9 @@ REGRAS RÍGIDAS:
 4. Retorne APENAS o bloco de código envolvido por ```python ... ``` sem explicações adicionais.
 """
             response = client.models.generate_content(
-                model="gemini-3.8-flash", contents=prompt
+                model="gemini-2.5-flash", contents=prompt
             )
 
-            # Extrai o código Python da resposta
             match = re.search(
                 r"```python\s*(.*?)\s*```", response.text, re.DOTALL
             )
@@ -257,7 +258,6 @@ REGRAS RÍGIDAS:
   with tab_dados:
     st.subheader("Explorador de Dados")
 
-    # Filtro rápido de busca na tabela
     termo_busca = st.text_input(
         "🔎 Pesquisar termo na tabela:", placeholder="Digite para filtrar..."
     )
@@ -271,7 +271,6 @@ REGRAS RÍGIDAS:
 
     st.dataframe(df_display, use_container_width=True, height=450)
 
-    # Botão de download dos dados filtrados
     csv = df_display.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Baixar Dados Exibidos em CSV",
@@ -281,7 +280,6 @@ REGRAS RÍGIDAS:
     )
 
 else:
-  # Tela Inicial de Boas-Vindas (Quando nenhum dado foi carregado)
   st.info("👈 Para começar, conecte sua planilha do Google Sheets na barra lateral.")
 
   st.markdown("""
