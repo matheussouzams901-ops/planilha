@@ -3,6 +3,7 @@ from io import BytesIO
 import re
 from fpdf import FPDF
 from google import genai
+import openpyxl
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -61,7 +62,7 @@ def verificar_login():
       senha = st.text_input("Senha", type="password")
 
       if st.button("Entrar", use_container_width=True):
-        if usuario == "Matheus" and senha == "12345678":
+        if usuario == "admin" and senha == "admin123":
           st.session_state["logged_in"] = True
           st.success("Login efetuado com sucesso!")
           st.rerun()
@@ -76,22 +77,27 @@ if not verificar_login():
 
 
 # -----------------------------------------------------------------------------
-# Funções de Suporte (CSV e PDF)
+# Funções de Suporte (Carregamento de Múltiplas Abas e PDF)
 # -----------------------------------------------------------------------------
-def get_csv_url(url: str) -> str:
+def get_export_url(url: str) -> str:
+  """Converte o link normal do Google Sheets no link de exportação XLSX completo."""
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
   if match:
     sheet_id = match.group(1)
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
   return None
 
 
 @st.cache_data(ttl=300)
-def carregar_dados(url: str) -> pd.DataFrame:
-  csv_url = get_csv_url(url)
-  if not csv_url:
+def carregar_todas_abas(url: str):
+  """Baixa a planilha em formato Excel e lê todas as abas disponíveis."""
+  export_url = get_export_url(url)
+  if not export_url:
     raise ValueError("Link do Google Sheets inválido.")
-  return pd.read_csv(csv_url)
+
+  # Lê todas as abas e retorna um dicionário { "NomeDaAba": DataFrame }
+  dict_dfs = pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
+  return dict_dfs
 
 
 def gerar_pdf(
@@ -101,7 +107,6 @@ def gerar_pdf(
   pdf = FPDF()
   pdf.add_page()
 
-  # Cabeçalho
   pdf.set_font("Helvetica", "B", 18)
   pdf.set_text_color(30, 41, 59)
   pdf.cell(0, 10, titulo, new_x="LMARGIN", new_y="NEXT", align="L")
@@ -118,7 +123,6 @@ def gerar_pdf(
   )
   pdf.ln(5)
 
-  # Resumo das Métricas
   pdf.set_font("Helvetica", "B", 14)
   pdf.set_text_color(15, 23, 42)
   pdf.cell(0, 10, "1. Métricas Chave", new_x="LMARGIN", new_y="NEXT")
@@ -133,7 +137,6 @@ def gerar_pdf(
   )
   pdf.ln(5)
 
-  # Análise da IA
   if resumo_ia:
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(15, 23, 42)
@@ -151,7 +154,7 @@ def gerar_pdf(
 
 
 # -----------------------------------------------------------------------------
-# Barra Lateral - Conexão, Filtros e Sessão
+# Barra Lateral - Conexão, Seleção de Aba e Filtros
 # -----------------------------------------------------------------------------
 with st.sidebar:
   st.title("⚡ DataSight Pro")
@@ -186,10 +189,16 @@ with st.sidebar:
 
   st.divider()
 
-  # Filtros Globais na Sidebar
-  if "df_raw" in st.session_state:
+  # Seleção da Aba da Planilha
+  if "dict_dfs" in st.session_state:
+    st.subheader("📑 Selecionar Aba / Guia")
+    lista_abas = list(st.session_state["dict_dfs"].keys())
+    aba_selecionada = st.selectbox("Escolha a aba para análise:", lista_abas)
+    st.session_state["aba_atual"] = aba_selecionada
+
+    # Filtros Globais na Sidebar
     st.subheader("🎯 Filtros Globais")
-    df_temp = st.session_state["df_raw"]
+    df_temp = st.session_state["dict_dfs"][aba_selecionada]
 
     cols_categ = df_temp.select_dtypes(include=["object"]).columns.tolist()
 
@@ -210,19 +219,20 @@ with st.sidebar:
 if btn_carregar:
   if sheet_url:
     try:
-      with st.spinner("Carregando base de dados..."):
-        st.session_state["df_raw"] = carregar_dados(sheet_url)
+      with st.spinner("Carregando todas as abas da planilha..."):
+        st.session_state["dict_dfs"] = carregar_todas_abas(sheet_url)
         st.session_state["messages"] = []
         st.session_state["ultimo_resumo_ia"] = ""
-        st.toast("Base conectada com sucesso!", icon="⚡")
+        st.toast("Todas as abas foram carregadas com sucesso!", icon="⚡")
     except Exception as e:
       st.error(f"Falha na conexão: {e}")
   else:
     st.warning("Insira o link da planilha.")
 
-# Aplicação dos Filtros nos Dados
-if "df_raw" in st.session_state:
-  df = st.session_state["df_raw"].copy()
+# Aplicação da Aba Escolhida e dos Filtros
+if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
+  aba_nome = st.session_state["aba_atual"]
+  df = st.session_state["dict_dfs"][aba_nome].copy()
 
   if "filtros" in st.session_state and st.session_state["filtros"]:
     for col, vals in st.session_state["filtros"].items():
@@ -231,7 +241,7 @@ if "df_raw" in st.session_state:
   # ---------------------------------------------------------------------------
   # Cabeçalho e KPIs
   # ---------------------------------------------------------------------------
-  st.title("📊 Painel Executivo")
+  st.title(f"📊 Painel Executivo — Aba: {aba_nome}")
 
   kpi1, kpi2, kpi3, kpi4 = st.columns(4)
   with kpi1:
@@ -250,7 +260,7 @@ if "df_raw" in st.session_state:
         label="Status do Filtro",
         value=(
             "Ativo"
-            if len(df) < len(st.session_state["df_raw"])
+            if len(df) < len(st.session_state["dict_dfs"][aba_nome])
             else "Sem Filtro"
         ),
     )
@@ -269,7 +279,9 @@ if "df_raw" in st.session_state:
 
   # --- MÓDULO 1: CHAT INTERATIVO COM IA ---
   with tab_copilot:
-    st.caption("Converse interativamente com seus dados em tempo real.")
+    st.caption(
+        f"Converse interativamente com a aba **{aba_nome}** em tempo real."
+    )
 
     if "messages" not in st.session_state:
       st.session_state["messages"] = []
@@ -278,7 +290,9 @@ if "df_raw" in st.session_state:
       with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-    if prompt_user := st.chat_input("Faça uma pergunta sobre a planilha..."):
+    if prompt_user := st.chat_input(
+        f"Faça uma pergunta sobre a aba {aba_nome}..."
+    ):
       if not api_key:
         st.error("Insira sua Gemini API Key na barra lateral.")
       else:
@@ -293,7 +307,7 @@ if "df_raw" in st.session_state:
             try:
               client = genai.Client(api_key=api_key)
               contexto_prompt = f"""
-Você é um analista executivo de dados. Responda à pergunta do usuário considerando os seguintes dados:
+Você é um analista executivo de dados. Responda à pergunta do usuário considerando os dados da aba '{aba_nome}':
 
 AMOSTRA DA BASE (até 100 linhas):
 {df.head(100).to_string()}
@@ -313,7 +327,7 @@ PERGUNTA: {prompt_user}
 
   # --- MÓDULO 2: GERADOR DE GRÁFICOS ---
   with tab_bi:
-    st.subheader("Geração de Visualizações com IA")
+    st.subheader(f"Geração de Visualizações (Aba: {aba_nome})")
 
     with st.form("form_chart"):
       prompt_chart = st.text_input(
@@ -336,7 +350,7 @@ PERGUNTA: {prompt_user}
             prompt_code = f"""
 Escreva APENAS código Python executável usando plotly.express (px) para criar o gráfico solicitado.
 Armazene o objeto final do gráfico na variável 'fig'.
-Base de dados disponível no DataFrame 'df':
+Base de dados disponível no DataFrame 'df' (relativo à aba {aba_nome}):
 {df.head(30).to_string()}
 
 Solicitação: {prompt_chart}
@@ -360,16 +374,16 @@ Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
 
   # --- MÓDULO 3: EXPLORADOR DE DADOS ---
   with tab_explorer:
-    st.subheader("Visão Detalhada dos Dados")
+    st.subheader(f"Visão Detalhada dos Dados — {aba_nome}")
     st.dataframe(df, use_container_width=True, height=450)
 
     col_down1, col_down2 = st.columns([1, 4])
     with col_down1:
       csv_data = df.to_csv(index=False).encode("utf-8")
       st.download_button(
-          "📥 Exportar CSV",
+          "📥 Exportar CSV da Aba",
           data=csv_data,
-          file_name="relatorio_datasight.csv",
+          file_name=f"relatorio_{aba_nome}.csv",
           mime="text/csv",
           use_container_width=True,
       )
@@ -383,7 +397,8 @@ Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
     )
 
     titulo_relatorio = st.text_input(
-        "Título do Relatório", value="Relatório Executivo de Desempenho"
+        "Título do Relatório",
+        value=f"Relatório Executivo - Aba {aba_nome}",
     )
     resumo_pdf = st.text_area(
         "Conteúdo / Diagnóstico para incluir no PDF",
@@ -400,7 +415,7 @@ Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
         st.download_button(
             label="📥 Baixar Relatório em PDF",
             data=bytes(pdf_bytes),
-            file_name="Relatorio_Executivo.pdf",
+            file_name=f"Relatorio_{aba_nome}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
