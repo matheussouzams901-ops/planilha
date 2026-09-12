@@ -95,9 +95,45 @@ def carregar_todas_abas(url: str):
   if not export_url:
     raise ValueError("Link do Google Sheets inválido.")
 
-  # Lê todas as abas e retorna um dicionário { "NomeDaAba": DataFrame }
   dict_dfs = pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
   return dict_dfs
+
+
+def preparar_contexto_completo(dict_dfs, aba_atual_nome, prompt_usuario):
+  """Monta um contexto rico para a IA, buscando dados diários em todas as abas."""
+  contexto_partes = []
+
+  # Se o usuário citou "dia", busca linhas que contenham o número/data mencionado em todas as abas
+  match_dia = re.search(r"\bdia\s*(\d{1,2})\b", prompt_usuario, re.IGNORECASE)
+
+  for nome_aba, dataframe in dict_dfs.items():
+    contexto_partes.append(f"\n--- ABA: {nome_aba} (Total de {len(dataframe)} linhas) ---")
+
+    # Tenta filtrar linhas específicas do dia solicitado se houver correspondência
+    df_filtrado_dia = pd.DataFrame()
+    if match_dia:
+      num_dia = match_dia.group(1).zfill(2)  # ex: "05" ou "5"
+      num_dia_int = int(match_dia.group(1))
+
+      # Procura em colunas do tipo texto/data ou por valores numéricos iguais ao dia
+      mascara = dataframe.astype(str).apply(
+          lambda col: col.str.contains(rf"\b{num_dia}\b|\b{num_dia_int}\b", regex=True, na=False)
+      ).any(axis=1)
+
+      df_filtrado_dia = dataframe[mascara]
+
+    if not df_filtrado_dia.empty:
+      contexto_partes.append(
+          f"REGISTROS ENCONTRADOS PARA O DIA {match_dia.group(1)} NESSA ABA ({len(df_filtrado_dia)} registros):\n"
+          + df_filtrado_dia.head(50).to_string()
+      )
+    else:
+      # Se não achou por filtro específico ou não era busca por dia, envia uma amostragem maior (até 200 linhas)
+      contexto_partes.append(
+          "AMOSTRA DE DADOS:\n" + dataframe.head(200).to_string()
+      )
+
+  return "\n".join(contexto_partes)
 
 
 def gerar_pdf(
@@ -193,7 +229,7 @@ with st.sidebar:
   if "dict_dfs" in st.session_state:
     st.subheader("📑 Selecionar Aba / Guia")
     lista_abas = list(st.session_state["dict_dfs"].keys())
-    aba_selecionada = st.selectbox("Escolha a aba para análise:", lista_abas)
+    aba_selecionada = st.selectbox("Escolha a aba principal para visualização:", lista_abas)
     st.session_state["aba_atual"] = aba_selecionada
 
     # Filtros Globais na Sidebar
@@ -279,9 +315,7 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
 
   # --- MÓDULO 1: CHAT INTERATIVO COM IA ---
   with tab_copilot:
-    st.caption(
-        f"Converse interativamente com a aba **{aba_nome}** em tempo real."
-    )
+    st.caption("Converse interativamente com a sua base de dados completa em tempo real.")
 
     if "messages" not in st.session_state:
       st.session_state["messages"] = []
@@ -290,9 +324,7 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
       with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-    if prompt_user := st.chat_input(
-        f"Faça uma pergunta sobre a aba {aba_nome}..."
-    ):
+    if prompt_user := st.chat_input("Faça uma pergunta sobre qualquer dia, aba ou métrica..."):
       if not api_key:
         st.error("Insira sua Gemini API Key na barra lateral.")
       else:
@@ -303,16 +335,23 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
           st.markdown(prompt_user)
 
         with st.chat_message("assistant"):
-          with st.spinner("Analisando..."):
+          with st.spinner("Buscando dados em todas as abas..."):
             try:
               client = genai.Client(api_key=api_key)
+
+              # Monta o contexto buscando em TODAS as abas da planilha
+              dados_contexto = preparar_contexto_completo(
+                  st.session_state["dict_dfs"], aba_nome, prompt_user
+              )
+
               contexto_prompt = f"""
-Você é um analista executivo de dados. Responda à pergunta do usuário considerando os dados da aba '{aba_nome}':
+Você é um analista executivo de dados sênior. Responda à pergunta do usuário analisando os dados fornecidos abaixo.
+Atenção: Procure atentamente por datas ou dias específicos (como dia 05, dia 06, etc.) caso o usuário pergunte por eles.
 
-AMOSTRA DA BASE (até 100 linhas):
-{df.head(100).to_string()}
+DADOS DAS ABAS DA PLANILHA:
+{dados_contexto}
 
-PERGUNTA: {prompt_user}
+PERGUNTA DO USUÁRIO: {prompt_user}
 """
               res = client.models.generate_content(
                   model="gemini-3.6-flash", contents=contexto_prompt
@@ -351,7 +390,7 @@ PERGUNTA: {prompt_user}
 Escreva APENAS código Python executável usando plotly.express (px) para criar o gráfico solicitado.
 Armazene o objeto final do gráfico na variável 'fig'.
 Base de dados disponível no DataFrame 'df' (relativo à aba {aba_nome}):
-{df.head(30).to_string()}
+{df.head(100).to_string()}
 
 Solicitação: {prompt_chart}
 Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
