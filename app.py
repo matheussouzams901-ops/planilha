@@ -1,7 +1,9 @@
 import base64
+from datetime import datetime
 from io import BytesIO
 import re
 import sqlite3
+import bcrypt
 from fpdf import FPDF
 from google import genai
 import openpyxl
@@ -19,7 +21,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilização CSS Customizada
 st.markdown(
     """
     <style>
@@ -38,18 +39,28 @@ st.markdown(
 
 
 # -----------------------------------------------------------------------------
-# Banco de Dados de Usuários e Configurações (SQLite)
+# Banco de Dados (SQLite) com Criptografia e Histórico
 # -----------------------------------------------------------------------------
 def init_db():
-  """Cria a tabela de usuários e credenciais se ela ainda não existir."""
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
+  # Tabela de Usuários
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             username TEXT PRIMARY KEY,
-            password TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
             api_key TEXT,
             sheet_url TEXT
+        )
+    """)
+  # Tabela de Histórico de Mensagens
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_chat (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            pergunta TEXT,
+            resposta TEXT,
+            data_hora DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
   conn.commit()
@@ -57,50 +68,85 @@ def init_db():
 
 
 def cadastrar_usuario(username, password, api_key, sheet_url):
-  """Cadastra um novo usuário no banco de dados."""
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
+  # Gerar Hash da Senha
+  pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+      "utf-8"
+  )
   try:
     cursor.execute(
         """
-            INSERT INTO usuarios (username, password, api_key, sheet_url)
+            INSERT INTO usuarios (username, password_hash, api_key, sheet_url)
             VALUES (?, ?, ?, ?)
         """,
-        (username, password, api_key, sheet_url),
+        (username, pw_hash, api_key, sheet_url),
     )
     conn.commit()
     return True, "Usuário cadastrado com sucesso!"
   except sqlite3.IntegrityError:
-    return False, "Nome de usuário já existe. Escolha outro."
+    return False, "Nome de usuário já existe."
   finally:
     conn.close()
 
 
 def autenticar_usuario(username, password):
-  """Verifica as credenciais e retorna os dados do usuário."""
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
   cursor.execute(
       """
-        SELECT username, api_key, sheet_url FROM usuarios 
-        WHERE username = ? AND password = ?
+        SELECT username, password_hash, api_key, sheet_url FROM usuarios 
+        WHERE username = ?
     """,
-      (username, password),
+      (username,),
   )
   user = cursor.fetchone()
   conn.close()
-  return user
+
+  if user and bcrypt.checkpw(password.encode("utf-8"), user[1].encode("utf-8")):
+    return user
+  return None
 
 
-def atualizar_configuracoes_usuario(username, api_key, sheet_url):
-  """Atualiza a API Key e a URL do Sheets salvas para o usuário."""
+def salvar_historico_chat(username, pergunta, resposta):
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
   cursor.execute(
       """
-        UPDATE usuarios 
-        SET api_key = ?, sheet_url = ? 
-        WHERE username = ?
+        INSERT INTO historico_chat (username, pergunta, resposta)
+        VALUES (?, ?, ?)
+    """,
+      (username, pergunta, resposta),
+  )
+  conn.commit()
+  conn.close()
+
+
+def carregar_historico_chat(username):
+  conn = sqlite3.connect("datasight_users.db")
+  cursor = conn.cursor()
+  cursor.execute(
+      """
+        SELECT pergunta, resposta FROM historico_chat 
+        WHERE username = ? ORDER BY id ASC
+    """,
+      (username,),
+  )
+  rows = cursor.fetchall()
+  conn.close()
+  messages = []
+  for req, resp in rows:
+    messages.append({"role": "user", "content": req})
+    messages.append({"role": "assistant", "content": resp})
+  return messages
+
+
+def atualizar_configuracoes_usuario(username, api_key, sheet_url):
+  conn = sqlite3.connect("datasight_users.db")
+  cursor = conn.cursor()
+  cursor.execute(
+      """
+        UPDATE usuarios SET api_key = ?, sheet_url = ? WHERE username = ?
     """,
       (api_key, sheet_url, username),
   )
@@ -108,12 +154,11 @@ def atualizar_configuracoes_usuario(username, api_key, sheet_url):
   conn.close()
 
 
-# Inicializa o banco de dados
 init_db()
 
 
 # -----------------------------------------------------------------------------
-# Tela de Login e Cadastro
+# Autenticação
 # -----------------------------------------------------------------------------
 def gerenciar_autenticacao():
   if "logged_in" not in st.session_state:
@@ -127,7 +172,6 @@ def gerenciar_autenticacao():
 
       aba_login, aba_cadastro = st.tabs(["🔑 Login", "📝 Novo Cadastro"])
 
-      # --- ABA DE LOGIN ---
       with aba_login:
         usuario = st.text_input("Usuário", key="login_user")
         senha = st.text_input("Senha", type="password", key="login_pass")
@@ -137,31 +181,39 @@ def gerenciar_autenticacao():
           if dados_user:
             st.session_state["logged_in"] = True
             st.session_state["username"] = dados_user[0]
-            st.session_state["api_key"] = dados_user[1] or ""
-            st.session_state["sheet_url"] = dados_user[2] or ""
+            st.session_state["api_key"] = dados_user[2] or ""
+            st.session_state["sheet_url"] = dados_user[3] or ""
+            # Carregar histórico do banco
+            st.session_state["messages"] = carregar_historico_chat(dados_user[0])
             st.success("Login efetuado com sucesso!")
             st.rerun()
           else:
             st.error("Usuário ou senha incorretos.")
 
-      # --- ABA DE CADASTRO ---
       with aba_cadastro:
         novo_user = st.text_input("Escolha um Usuário", key="cad_user")
-        nova_senha = st.text_input("Escolha uma Senha", type="password", key="cad_pass")
-        nova_api_key = st.text_input("Sua Gemini API Key", type="password", key="cad_key")
-        nova_sheet_url = st.text_input("Link da sua Planilha (Google Sheets)", key="cad_url")
+        nova_senha = st.text_input(
+            "Escolha uma Senha", type="password", key="cad_pass"
+        )
+        nova_api_key = st.text_input(
+            "Sua Gemini API Key", type="password", key="cad_key"
+        )
+        nova_sheet_url = st.text_input(
+            "Link do Google Sheets", key="cad_url"
+        )
 
         if st.button("Cadastrar e Salvar Dados", use_container_width=True):
           if not novo_user or not nova_senha:
             st.warning("Preencha ao menos usuário e senha.")
           else:
-            sucesso, msg = cadastrar_usuario(novo_user, nova_senha, nova_api_key, nova_sheet_url)
+            sucesso, msg = cadastrar_usuario(
+                novo_user, nova_senha, nova_api_key, nova_sheet_url
+            )
             if sucesso:
               st.success(msg)
               st.info("Agora faça login na aba 'Login'.")
             else:
               st.error(msg)
-
     return False
   return True
 
@@ -171,13 +223,15 @@ if not gerenciar_autenticacao():
 
 
 # -----------------------------------------------------------------------------
-# Funções de Suporte (Google Sheets e PDF)
+# Suporte a Dados (Google Sheets e Upload Local)
 # -----------------------------------------------------------------------------
 def get_export_url(url: str) -> str:
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
   if match:
     sheet_id = match.group(1)
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    return (
+        f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    )
   return None
 
 
@@ -186,8 +240,7 @@ def carregar_todas_abas(url: str):
   export_url = get_export_url(url)
   if not export_url:
     raise ValueError("Link do Google Sheets inválido.")
-  dict_dfs = pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
-  return dict_dfs
+  return pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
 
 
 def preparar_contexto_completo(dict_dfs, aba_atual_nome, prompt_usuario):
@@ -195,28 +248,41 @@ def preparar_contexto_completo(dict_dfs, aba_atual_nome, prompt_usuario):
   match_dia = re.search(r"\bdia\s*(\d{1,2})\b", prompt_usuario, re.IGNORECASE)
 
   for nome_aba, dataframe in dict_dfs.items():
-    contexto_partes.append(f"\n--- ABA: {nome_aba} (Total de {len(dataframe)} linhas) ---")
+    contexto_partes.append(
+        f"\n--- ABA: {nome_aba} (Total de {len(dataframe)} linhas) ---"
+    )
     df_filtrado_dia = pd.DataFrame()
     if match_dia:
       num_dia = match_dia.group(1).zfill(2)
       num_dia_int = int(match_dia.group(1))
-      mascara = dataframe.astype(str).apply(
-          lambda col: col.str.contains(rf"\b{num_dia}\b|\b{num_dia_int}\b", regex=True, na=False)
-      ).any(axis=1)
+      mascara = (
+          dataframe.astype(str)
+          .apply(
+              lambda col: col.str.contains(
+                  rf"\b{num_dia}\b|\b{num_dia_int}\b", regex=True, na=False
+              )
+          )
+          .any(axis=1)
+      )
       df_filtrado_dia = dataframe[mascara]
 
     if not df_filtrado_dia.empty:
       contexto_partes.append(
-          f"REGISTROS ENCONTRADOS PARA O DIA {match_dia.group(1)} NESSA ABA ({len(df_filtrado_dia)} registros):\n"
+          f"REGISTROS ENCONTRADOS PARA O DIA {match_dia.group(1)} NESSA ABA"
+          f" ({len(df_filtrado_dia)} registros):\n"
           + df_filtrado_dia.head(50).to_string()
       )
     else:
-      contexto_partes.append("AMOSTRA DE DADOS:\n" + dataframe.head(200).to_string())
+      contexto_partes.append(
+          "AMOSTRA DE DADOS:\n" + dataframe.head(200).to_string()
+      )
 
   return "\n".join(contexto_partes)
 
 
-def gerar_pdf(df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Executivo") -> bytes:
+def gerar_pdf(
+    df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Executivo"
+) -> bytes:
   pdf = FPDF()
   pdf.add_page()
   pdf.set_font("Helvetica", "B", 18)
@@ -225,7 +291,14 @@ def gerar_pdf(df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Execut
 
   pdf.set_font("Helvetica", "", 10)
   pdf.set_text_color(100, 116, 139)
-  pdf.cell(0, 10, "Gerado por DataSight Analytics Pro", new_x="LMARGIN", new_y="NEXT", align="L")
+  pdf.cell(
+      0,
+      10,
+      "Gerado por DataSight Analytics Pro",
+      new_x="LMARGIN",
+      new_y="NEXT",
+      align="L",
+  )
   pdf.ln(5)
 
   pdf.set_font("Helvetica", "B", 14)
@@ -234,13 +307,20 @@ def gerar_pdf(df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Execut
 
   pdf.set_font("Helvetica", "", 11)
   pdf.set_text_color(51, 65, 85)
-  pdf.multi_cell(0, 8, f"- Total de Registros Analisados: {len(df):,}\n- Total de Colunas: {len(df.columns)}")
+  pdf.multi_cell(
+      0,
+      8,
+      f"- Total de Registros Analisados: {len(df):,}\n- Total de Colunas:"
+      f" {len(df.columns)}",
+  )
   pdf.ln(5)
 
   if resumo_ia:
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 10, "2. Diagnóstico Executivo de IA", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        0, 10, "2. Diagnóstico Executivo de IA", new_x="LMARGIN", new_y="NEXT"
+    )
     texto_limpo = resumo_ia.encode("latin-1", "replace").decode("latin-1")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(51, 65, 85)
@@ -250,7 +330,7 @@ def gerar_pdf(df: pd.DataFrame, resumo_ia: str, titulo: str = "Relatório Execut
 
 
 # -----------------------------------------------------------------------------
-# Barra Lateral - Informações do Usuário e Conexão Automática
+# Barra Lateral
 # -----------------------------------------------------------------------------
 with st.sidebar:
   st.title("⚡ DataSight Pro")
@@ -262,43 +342,62 @@ with st.sidebar:
 
   st.divider()
 
-  st.subheader("⚙️ Suas Credenciais Salvas")
-  api_key = st.text_input("Gemini API Key", value=st.session_state.get("api_key", ""), type="password")
-  sheet_url = st.text_input("Google Sheets URL", value=st.session_state.get("sheet_url", ""))
+  st.subheader("⚙️ Suas Credenciais")
+  api_key = st.text_input(
+      "Gemini API Key",
+      value=st.session_state.get("api_key", ""),
+      type="password",
+  )
+  sheet_url = st.text_input(
+      "Google Sheets URL", value=st.session_state.get("sheet_url", "")
+  )
 
-  if st.button("💾 Salvar/Atualizar Chaves", use_container_width=True):
-    atualizar_configuracoes_usuario(st.session_state["username"], api_key, sheet_url)
+  if st.button("💾 Salvar Credenciais", use_container_width=True):
+    atualizar_configuracoes_usuario(
+        st.session_state["username"], api_key, sheet_url
+    )
     st.session_state["api_key"] = api_key
     st.session_state["sheet_url"] = sheet_url
-    st.success("Credenciais atualizadas com sucesso!")
+    st.success("Salvo!")
 
   st.divider()
 
-  btn_carregar = st.button("🔄 Conectar/Recarregar Planilha", use_container_width=True)
+  st.subheader("📁 Arquivo Local (.xlsx / .csv)")
+  arquivo_local = st.file_uploader(
+      "Ou envie uma planilha:", type=["xlsx", "csv"]
+  )
 
-  # Seleção da Aba
-  if "dict_dfs" in st.session_state:
-    st.subheader("📑 Selecionar Aba / Guia")
-    lista_abas = list(st.session_state["dict_dfs"].keys())
-    aba_selecionada = st.selectbox("Aba Ativa:", lista_abas)
-    st.session_state["aba_atual"] = aba_selecionada
+  btn_carregar = st.button("🔄 Conectar Dados", use_container_width=True)
 
-# Carregamento Automático ao Clicar em Conectar
-if btn_carregar or ("dict_dfs" not in st.session_state and sheet_url):
-  if sheet_url:
+# -----------------------------------------------------------------------------
+# Processamento dos Dados (Online + Local)
+# -----------------------------------------------------------------------------
+if btn_carregar or ("dict_dfs" not in st.session_state):
+  if arquivo_local:
     try:
-      with st.spinner("Conectando e baixando abas da planilha..."):
-        st.session_state["dict_dfs"] = carregar_todas_abas(sheet_url)
-        st.session_state["messages"] = []
-        st.toast("Planilha carregada com sucesso!", icon="⚡")
+      if arquivo_local.name.endswith(".csv"):
+        st.session_state["dict_dfs"] = {"Dados": pd.read_csv(arquivo_local)}
+      else:
+        st.session_state["dict_dfs"] = pd.read_excel(
+            arquivo_local, sheet_name=None
+        )
+      st.toast("Planilha local carregada!", icon="⚡")
     except Exception as e:
-      st.error(f"Falha ao conectar: {e}")
+      st.error(f"Erro ao ler arquivo: {e}")
+  elif sheet_url:
+    try:
+      with st.spinner("Baixando abas do Google Sheets..."):
+        st.session_state["dict_dfs"] = carregar_todas_abas(sheet_url)
+        st.toast("Google Sheets conectado!", icon="⚡")
+    except Exception as e:
+      st.error(f"Falha na conexão: {e}")
 
 # -----------------------------------------------------------------------------
 # Dashboard Principal
 # -----------------------------------------------------------------------------
-if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
-  aba_nome = st.session_state["aba_atual"]
+if "dict_dfs" in st.session_state:
+  lista_abas = list(st.session_state["dict_dfs"].keys())
+  aba_nome = st.sidebar.selectbox("📑 Aba Ativa:", lista_abas)
   df = st.session_state["dict_dfs"][aba_nome].copy()
 
   st.title(f"📊 Painel Executivo — Aba: {aba_nome}")
@@ -311,7 +410,9 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
   with kpi3:
     cols_num = df.select_dtypes(include=["number"]).columns
     if len(cols_num) > 0:
-      st.metric(label=f"Soma ({cols_num[0]})", value=f"{df[cols_num[0]].sum():,.2f}")
+      st.metric(
+          label=f"Soma ({cols_num[0]})", value=f"{df[cols_num[0]].sum():,.2f}"
+      )
     else:
       st.metric(label="Status da Base", value="Ativo")
 
@@ -324,12 +425,17 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
       "📄 Exportar PDF",
   ])
 
-  # --- MÓDULO 1: CHAT ---
+  # --- MÓDULO 1: CHAT COM HISTÓRICO SALVO ---
   with tab_copilot:
-    st.caption("Converse interativamente com todas as abas da sua planilha.")
+    st.caption(
+        "Converse interativamente com suas planilhas (Histórico salvo"
+        " automaticamente)."
+    )
 
     if "messages" not in st.session_state:
-      st.session_state["messages"] = []
+      st.session_state["messages"] = carregar_historico_chat(
+          st.session_state["username"]
+      )
 
     for msg in st.session_state["messages"]:
       with st.chat_message(msg["role"]):
@@ -339,7 +445,9 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
       if not api_key:
         st.error("Insira sua Gemini API Key na barra lateral.")
       else:
-        st.session_state["messages"].append({"role": "user", "content": prompt_user})
+        st.session_state["messages"].append(
+            {"role": "user", "content": prompt_user}
+        )
         with st.chat_message("user"):
           st.markdown(prompt_user)
 
@@ -347,7 +455,9 @@ if "dict_dfs" in st.session_state and "aba_atual" in st.session_state:
           with st.spinner("Buscando dados em todas as abas..."):
             try:
               client = genai.Client(api_key=api_key)
-              dados_contexto = preparar_contexto_completo(st.session_state["dict_dfs"], aba_nome, prompt_user)
+              dados_contexto = preparar_contexto_completo(
+                  st.session_state["dict_dfs"], aba_nome, prompt_user
+              )
 
               contexto_prompt = f"""
 Você é um analista executivo de dados sênior. Responda à pergunta do usuário analisando os dados abaixo.
@@ -358,10 +468,20 @@ DADOS DA PLANILHA:
 
 PERGUNTA DO USUÁRIO: {prompt_user}
 """
-              res = client.models.generate_content(model="gemini-3.6-flash", contents=contexto_prompt)
+              res = client.models.generate_content(
+                  model="gemini-3.6-flash", contents=contexto_prompt
+              )
               st.markdown(res.text)
-              st.session_state["messages"].append({"role": "assistant", "content": res.text})
+
+              st.session_state["messages"].append(
+                  {"role": "assistant", "content": res.text}
+              )
               st.session_state["ultimo_resumo_ia"] = res.text
+
+              # Salvar histórico no banco
+              salvar_historico_chat(
+                  st.session_state["username"], prompt_user, res.text
+              )
             except Exception as e:
               st.error(f"Erro ao gerar resposta: {e}")
 
@@ -370,7 +490,9 @@ PERGUNTA DO USUÁRIO: {prompt_user}
     st.subheader(f"Geração de Gráficos (Aba: {aba_nome})")
     with st.form("form_chart"):
       prompt_chart = st.text_input("Descreva o gráfico desejado:")
-      btn_chart = st.form_submit_button("Gerar Gráfico", use_container_width=True)
+      btn_chart = st.form_submit_button(
+          "Gerar Gráfico", use_container_width=True
+      )
 
     if btn_chart and prompt_chart:
       if not api_key:
@@ -381,14 +503,16 @@ PERGUNTA DO USUÁRIO: {prompt_user}
             client = genai.Client(api_key=api_key)
             prompt_code = f"""
 Escreva APENAS código Python executável usando plotly.express (px) para criar o gráfico solicitado.
-Armazene o objeto final na variável 'fig'.
+Armazene o objeto na variável 'fig'.
 DataFrame 'df':
 {df.head(100).to_string()}
 
 Solicitação: {prompt_chart}
-Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
+Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
 """
-            res = client.models.generate_content(model="gemini-3.6-flash", contents=prompt_code)
+            res = client.models.generate_content(
+                model="gemini-3.6-flash", contents=prompt_code
+            )
             match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
             if match:
               scope = {"df": df, "px": px}
@@ -406,11 +530,19 @@ Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
   # --- MÓDULO 4: EXPORTAÇÃO DE PDF ---
   with tab_export:
     st.subheader("📄 Exportar Relatório Executivo")
-    resumo_pdf = st.text_area("Diagnóstico / Resumo da IA", value=st.session_state.get("ultimo_resumo_ia", ""), height=150)
+    resumo_pdf = st.text_area(
+        "Diagnóstico / Resumo da IA",
+        value=st.session_state.get("ultimo_resumo_ia", ""),
+        height=150,
+    )
 
     if st.button("🔨 Gerar PDF", use_container_width=True):
       try:
-        pdf_bytes = gerar_pdf(df=df, resumo_ia=resumo_pdf, titulo=f"Relatório Executivo - {aba_nome}")
+        pdf_bytes = gerar_pdf(
+            df=df,
+            resumo_ia=resumo_pdf,
+            titulo=f"Relatório Executivo - {aba_nome}",
+        )
         st.download_button(
             label="📥 Baixar PDF",
             data=bytes(pdf_bytes),
@@ -422,4 +554,7 @@ Retorne APENAS o bloco de código dentro de ```python ... ``` sem explicações.
         st.error(f"Erro ao gerar PDF: {e}")
 
 else:
-  st.info("👈 Conecte-se à planilha na barra lateral ou verifique seu link salvo.")
+  st.info(
+      "👈 Conecte-se ao Google Sheets ou faça upload de um arquivo local na"
+      " barra lateral."
+  )
