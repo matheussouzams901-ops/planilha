@@ -39,26 +39,44 @@ st.markdown(
 
 
 # -----------------------------------------------------------------------------
-# Criptografia com hashlib (Nativo do Python, sem depender de bcrypt)
+# Criptografia Nativa
 # -----------------------------------------------------------------------------
 def gerar_hash_senha(senha: str) -> str:
   return hashlib.sha256(senha.encode("utf-8")).hexdigest()
 
 
 # -----------------------------------------------------------------------------
-# Banco de Dados (SQLite)
+# Banco de Dados (SQLite com Migração Automática)
 # -----------------------------------------------------------------------------
 def init_db():
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
+
+  # Recria/Garante a tabela de usuários com a estrutura correta
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             username TEXT PRIMARY KEY,
-            password_hash TEXT NOT NULL,
+            password_hash TEXT,
             api_key TEXT,
             sheet_url TEXT
         )
     """)
+
+  # Trata caso a tabela antiga usava a coluna 'password'
+  cursor.execute("PRAGMA table_info(usuarios)")
+  colunas = [col[1] for col in cursor.fetchall()]
+  if "password_hash" not in colunas:
+    cursor.execute("DROP TABLE usuarios")
+    cursor.execute("""
+            CREATE TABLE usuarios (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                api_key TEXT,
+                sheet_url TEXT
+            )
+        """)
+
+  # Tabela de histórico de chat
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS historico_chat (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +105,9 @@ def cadastrar_usuario(username, password, api_key, sheet_url):
     conn.commit()
     return True, "Usuário cadastrado com sucesso!"
   except sqlite3.IntegrityError:
-    return False, "Nome de usuário já existe."
+    return False, "Nome de usuário já existe. Escolha outro."
+  except Exception as e:
+    return False, f"Erro no banco: {e}"
   finally:
     conn.close()
 
@@ -158,7 +178,7 @@ init_db()
 
 
 # -----------------------------------------------------------------------------
-# Autenticação
+# Autenticação e Login
 # -----------------------------------------------------------------------------
 def gerenciar_autenticacao():
   if "logged_in" not in st.session_state:
@@ -359,7 +379,7 @@ with st.sidebar:
     )
     st.session_state["api_key"] = api_key
     st.session_state["sheet_url"] = sheet_url
-    st.success("Salvo!")
+    st.success("Salvo com sucesso!")
 
   st.divider()
 
