@@ -431,19 +431,20 @@ if "dict_dfs" in st.session_state:
 
   df_original = st.session_state["dict_dfs"][aba_nome].copy()
 
-  # --- NOVO: FILTROS AVANÇADOS (CATEGÓRICOS + TEMPORAIS) ---
-  with st.expander("🔍 Filtros Globais Avançados (Data e Categorias)", expanded=True):
+  # --- FILTROS AVANÇADOS (CATEGÓRICOS + TEMPORAIS) ---
+  with st.expander(
+      "🔍 Filtros Globais Avançados (Data e Categorias)", expanded=True
+  ):
     f_col1, f_col2 = st.columns(2)
-    
+
     df_filtrado = df_original.copy()
-    
+
     # Detecção automática de colunas de data
     cols_data = []
     for c in df_original.columns:
       if pd.api.types.is_datetime64_any_dtype(df_original[c]):
         cols_data.append(c)
       else:
-        # Tenta converter para datetime para testar
         try:
           parsed = pd.to_datetime(df_original[c], errors="coerce")
           if parsed.notna().sum() > len(df_original) * 0.5:
@@ -457,20 +458,24 @@ if "dict_dfs" in st.session_state:
         col_data_sel = st.selectbox("📅 Coluna Temporal Detectada:", cols_data)
         min_date = df_original[col_data_sel].min()
         max_date = df_original[col_data_sel].max()
-        
+
         if pd.notna(min_date) and pd.notna(max_date):
           intervalo_data = st.date_input(
               "Intervalo de Datas:",
               value=(min_date.date(), max_date.date()),
               min_value=min_date.date(),
-              max_value=max_date.date()
+              max_value=max_date.date(),
           )
           if len(intervalo_data) == 2:
             data_ini, data_fim = intervalo_data
-            mask_data = (df_original[col_data_sel].dt.date >= data_ini) & (df_original[col_data_sel].dt.date <= data_fim)
+            mask_data = (df_original[col_data_sel].dt.date >= data_ini) & (
+                df_original[col_data_sel].dt.date <= data_fim
+            )
             df_filtrado = df_filtrado[mask_data]
       else:
-        st.info("Nenhuma coluna do tipo Data/Datetime identificada automaticamente.")
+        st.info(
+            "Nenhuma coluna do tipo Data/Datetime identificada automaticamente."
+        )
 
     with f_col2:
       col_filtro = st.selectbox(
@@ -483,7 +488,9 @@ if "dict_dfs" in st.session_state:
             f"Valores de '{col_filtro}':", valores_unicos
         )
         if val_selecionados:
-          df_filtrado = df_filtrado[df_filtrado[col_filtro].isin(val_selecionados)]
+          df_filtrado = df_filtrado[
+              df_filtrado[col_filtro].isin(val_selecionados)
+          ]
 
   df = df_filtrado
 
@@ -494,7 +501,6 @@ if "dict_dfs" in st.session_state:
   k1, k2, k3, k4 = st.columns(4)
   cols_num = df.select_dtypes(include=["number"]).columns
 
-  # Cálculo de variação da métrica principal (1ª metade x 2ª metade do conjunto)
   delta_text = "Em relação ao período"
   delta_class = "kpi-sub-neu"
   soma_val = "N/A"
@@ -506,7 +512,6 @@ if "dict_dfs" in st.session_state:
     soma_val = f"{val_total:,.2f}"
     media_val = f"{df[cols_num[0]].mean():,.2f}"
 
-    # Dividir em duas metades para calcular variação percentual
     metade = len(df) // 2
     if metade > 0:
       val_ant = df[cols_num[0]].iloc[:metade].sum()
@@ -620,7 +625,7 @@ DADOS DA PLANILHA:
 PERGUNTA: {prompt_user}
 """
               res = client.models.generate_content(
-                  model="gemini-2.5-flash", contents=contexto_prompt
+                  model="gemini-3.6-flash", contents=contexto_prompt
               )
               st.markdown(res.text)
 
@@ -643,7 +648,10 @@ PERGUNTA: {prompt_user}
       with st.form("form_chart"):
         prompt_chart = st.text_area(
             "Descreva o gráfico desejado:",
-            placeholder="Ex: Crie um gráfico de linhas mostrando a evolução de vendas no tempo",
+            placeholder=(
+                "Ex: Crie um gráfico de linhas mostrando a evolução de vendas"
+                " no tempo"
+            ),
         )
         btn_chart = st.form_submit_button(
             "Gerar Visualização", use_container_width=True, type="primary"
@@ -668,7 +676,7 @@ Solicitação: {prompt_chart}
 Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
 """
               res = client.models.generate_content(
-                  model="gemini-2.5-flash", contents=prompt_code
+                  model="gemini-3.6-flash", contents=prompt_code
               )
               match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
               if match:
@@ -680,28 +688,43 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
             except Exception as e:
               st.error(f"Erro ao gerar gráfico: {e}")
 
-  # --- MÓDULO 3: NOVO - ANÁLISE GEOGRÁFICA ---
+  # --- MÓDULO 3: ANÁLISE GEOGRÁFICA ---
   with tab_geo:
     st.subheader("🗺️ Análise de Distribuição por Localidade")
-    cols_geo = [c for c in df.columns if any(p in c.lower() for p in ["estado", "uf", "cidade", "pais", "regiao", "local"])]
-    
+    cols_geo = [
+        c
+        for c in df.columns
+        if any(
+            p in c.lower()
+            for p in ["estado", "uf", "cidade", "pais", "regiao", "local"]
+        )
+    ]
+
     if cols_geo and len(cols_num) > 0:
       col_geo_sel = st.selectbox("Selecione a Coluna de Localidade:", cols_geo)
       col_val_sel = st.selectbox("Selecione o Valor Métrica:", cols_num)
-      
-      df_geo = df.groupby(col_geo_sel)[col_val_sel].sum().reset_index().sort_values(by=col_val_sel, ascending=False)
+
+      df_geo = (
+          df.groupby(col_geo_sel)[col_val_sel]
+          .sum()
+          .reset_index()
+          .sort_values(by=col_val_sel, ascending=False)
+      )
       fig_geo = px.bar(
-          df_geo, 
-          x=col_geo_sel, 
-          y=col_val_sel, 
+          df_geo,
+          x=col_geo_sel,
+          y=col_val_sel,
           color=col_val_sel,
           title=f"Distribuição de {col_val_sel} por {col_geo_sel}",
           template="plotly_white",
-          color_continuous_scale="Blues"
+          color_continuous_scale="Blues",
       )
       st.plotly_chart(fig_geo, use_container_width=True)
     else:
-      st.info("Para ativar este mapa/visão, certifique-se de ter colunas de local (ex: Estado, Cidade, UF) e métricas numéricas na sua planilha.")
+      st.info(
+          "Para ativar esta visão, certifique-se de ter colunas de local (ex:"
+          " Estado, Cidade, Região, UF) e métricas numéricas na sua planilha."
+      )
 
   # --- MÓDULO 4: EXPLORADOR DE DADOS ---
   with tab_explorer:
