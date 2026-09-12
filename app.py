@@ -1,11 +1,12 @@
 import re
 from google import genai
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
-st.set_page_config(page_title="Gerenciador de Planilhas com IA", layout="wide")
+st.set_page_config(page_title="Gerenciador com IA e Gráficos", layout="wide")
 
-st.title("📊 Gerenciador de Planilhas Google com IA")
+st.title("📊 Gerenciador de Planilhas com IA e Gráficos")
 
 # Configurações na barra lateral
 st.sidebar.header("Configurações")
@@ -48,34 +49,68 @@ if "df" in st.session_state:
     st.dataframe(df)
 
   st.markdown("---")
-  st.markdown("### 2. Pergunte para a IA")
+  st.markdown("### 2. Pergunte ou peça um gráfico para a IA")
 
   with st.form("form_pergunta"):
-    query = st.text_input("O que deseja analisar ou consultar nesta planilha?")
-    submitted = st.form_submit_button("Enviar Pergunta")
+    tipo_resposta = st.radio(
+        "O que deseja gerar?", ["Texto / Análise", "Gráfico Interativo"]
+    )
+    query = st.text_input(
+        "Exemplo: 'Mostre um gráfico de barras da produção por cliente' ou 'Qual"
+        " o total de serviços?'"
+    )
+    submitted = st.form_submit_button("Gerar")
 
     if submitted:
       if not query:
-        st.warning("Digite uma pergunta.")
+        st.warning("Digite uma solicitação.")
       elif not api_key:
         st.error("Por favor, insira sua API Key do Gemini na barra lateral.")
       else:
-        with st.spinner("Analisando dados..."):
+        with st.spinner("Processando..."):
           try:
             client = genai.Client(api_key=api_key)
 
-            prompt = (
-                "Você é um especialista em análise de dados. Com base nos"
-                f" dados a seguir:\n\n{df.to_string()}\n\nResponda: {query}"
-            )
+            if tipo_resposta == "Gráfico Interativo":
+              prompt = f"""
+Você é um programador especialista em Python e Plotly.
+Com base nestes dados da planilha:
+{df.head(100).to_string()}
 
-            # Atualizado para o modelo gemini-3.6-flash
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt,
-            )
+A solicitação do usuário é: {query}
 
-            st.markdown("### 🤖 Resposta da IA:")
-            st.write(response.text)
+Escreva APENAS o código Python necessário usando 'plotly.express' (como px) para criar o gráfico desejado.
+Armazene o objeto da figura na variável 'fig'.
+NÃO adicione explicações, NÃO inclua 'fig.show()', retorne APENAS o bloco de código Python dentro de marcadores ```python.
+"""
+              response = client.models.generate_content(
+                  model="gemini-3.6-flash", contents=prompt
+              )
+
+              # Extrai o código Python da resposta da IA
+              code_match = re.search(
+                  r"```python\s*(.*?)\s*```", response.text, re.DOTALL
+              )
+              if code_match:
+                code = code_match.group(1)
+                # Executa o código gerado no contexto local onde 'df' e 'px' estão disponíveis
+                local_vars = {"df": df, "px": px}
+                exec(code, globals(), local_vars)
+
+                if "fig" in local_vars:
+                  st.plotly_chart(local_vars["fig"], use_container_width=True)
+                else:
+                  st.error("A IA não gerou a variável 'fig' esperada.")
+              else:
+                st.write(response.text)
+
+            else:
+              prompt = f"Com base nos dados a seguir:\n\n{df.to_string()}\n\nResponda: {query}"
+              response = client.models.generate_content(
+                  model="gemini-3.6-flash", contents=prompt
+              )
+              st.markdown("### 🤖 Resposta da IA:")
+              st.write(response.text)
+
           except Exception as e:
-            st.error(f"Erro ao processar a pergunta: {e}")
+            st.error(f"Erro ao processar: {e}")
