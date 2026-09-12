@@ -1,9 +1,9 @@
 import base64
 from datetime import datetime
+import hashlib
 from io import BytesIO
 import re
 import sqlite3
-import bcrypt
 from fpdf import FPDF
 from google import genai
 import openpyxl
@@ -39,12 +39,18 @@ st.markdown(
 
 
 # -----------------------------------------------------------------------------
-# Banco de Dados (SQLite) com Criptografia e Histórico
+# Criptografia com hashlib (Nativo do Python, sem depender de bcrypt)
+# -----------------------------------------------------------------------------
+def gerar_hash_senha(senha: str) -> str:
+  return hashlib.sha256(senha.encode("utf-8")).hexdigest()
+
+
+# -----------------------------------------------------------------------------
+# Banco de Dados (SQLite)
 # -----------------------------------------------------------------------------
 def init_db():
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
-  # Tabela de Usuários
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             username TEXT PRIMARY KEY,
@@ -53,7 +59,6 @@ def init_db():
             sheet_url TEXT
         )
     """)
-  # Tabela de Histórico de Mensagens
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS historico_chat (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,10 +75,7 @@ def init_db():
 def cadastrar_usuario(username, password, api_key, sheet_url):
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
-  # Gerar Hash da Senha
-  pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
-      "utf-8"
-  )
+  pw_hash = gerar_hash_senha(password)
   try:
     cursor.execute(
         """
@@ -93,19 +95,17 @@ def cadastrar_usuario(username, password, api_key, sheet_url):
 def autenticar_usuario(username, password):
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
+  pw_hash = gerar_hash_senha(password)
   cursor.execute(
       """
         SELECT username, password_hash, api_key, sheet_url FROM usuarios 
-        WHERE username = ?
+        WHERE username = ? AND password_hash = ?
     """,
-      (username,),
+      (username, pw_hash),
   )
   user = cursor.fetchone()
   conn.close()
-
-  if user and bcrypt.checkpw(password.encode("utf-8"), user[1].encode("utf-8")):
-    return user
-  return None
+  return user
 
 
 def salvar_historico_chat(username, pergunta, resposta):
@@ -183,8 +183,9 @@ def gerenciar_autenticacao():
             st.session_state["username"] = dados_user[0]
             st.session_state["api_key"] = dados_user[2] or ""
             st.session_state["sheet_url"] = dados_user[3] or ""
-            # Carregar histórico do banco
-            st.session_state["messages"] = carregar_historico_chat(dados_user[0])
+            st.session_state["messages"] = carregar_historico_chat(
+                dados_user[0]
+            )
             st.success("Login efetuado com sucesso!")
             st.rerun()
           else:
@@ -370,7 +371,7 @@ with st.sidebar:
   btn_carregar = st.button("🔄 Conectar Dados", use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Processamento dos Dados (Online + Local)
+# Processamento dos Dados
 # -----------------------------------------------------------------------------
 if btn_carregar or ("dict_dfs" not in st.session_state):
   if arquivo_local:
@@ -425,12 +426,9 @@ if "dict_dfs" in st.session_state:
       "📄 Exportar PDF",
   ])
 
-  # --- MÓDULO 1: CHAT COM HISTÓRICO SALVO ---
+  # --- MÓDULO 1: CHAT ---
   with tab_copilot:
-    st.caption(
-        "Converse interativamente com suas planilhas (Histórico salvo"
-        " automaticamente)."
-    )
+    st.caption("Converse interativamente com suas planilhas.")
 
     if "messages" not in st.session_state:
       st.session_state["messages"] = carregar_historico_chat(
@@ -478,7 +476,6 @@ PERGUNTA DO USUÁRIO: {prompt_user}
               )
               st.session_state["ultimo_resumo_ia"] = res.text
 
-              # Salvar histórico no banco
               salvar_historico_chat(
                   st.session_state["username"], prompt_user, res.text
               )
