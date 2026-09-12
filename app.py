@@ -62,7 +62,7 @@ def verificar_login():
 
       # Você pode alterar o usuário e senha definidos aqui:
       if st.button("Entrar", use_container_width=True):
-        if usuario == "admin" and senha == "admin123":
+        if usuario == "Matheus" and senha == "admin123":
           st.session_state["logged_in"] = True
           st.success("Login efetuado com sucesso!")
           st.rerun()
