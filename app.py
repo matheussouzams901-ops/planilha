@@ -149,9 +149,7 @@ st.markdown(
         border-left: 4px solid #0F172A !important;
     }
 
-    /* --------------------------------------------------------- */
-    /* AMPLIAÇÃO DAS ABAS (MUITO MAIORES E DESTAQUE VISUAL)      */
-    /* --------------------------------------------------------- */
+    /* AMPLIAÇÃO DAS ABAS (MUITO MAIORES E DESTAQUE VISUAL) */
     .stTabs [data-baseweb="tab-list"] {
         gap: 16px !important;
         background-color: #E2E8F0 !important;
@@ -162,15 +160,15 @@ st.markdown(
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 12px !important;
-        padding: 16px 32px !important; /* Aumentado a altura e largura dos botões */
+        padding: 16px 32px !important;
         font-weight: 800 !important;
-        font-size: 1.3rem !important; /* Fonte bem maior */
+        font-size: 1.3rem !important;
         color: #334155 !important;
         transition: all 0.2s ease-in-out !important;
     }
     .stTabs [aria-selected="true"] {
         background-color: #2563EB !important;
-        color: #FFFFFF !important; /* Cor branca quando selecionada para destaque */
+        color: #FFFFFF !important;
         box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3) !important;
     }
     .stTabs [data-baseweb="tab-border"] {
@@ -192,7 +190,6 @@ st.markdown(
         background-color: #1D4ED8 !important;
     }
 
-    /* Remover borda externa do st.form */
     [data-testid="stForm"] {
         border: none !important;
         padding: 0 !important;
@@ -402,7 +399,7 @@ if not gerenciar_autenticacao():
 
 
 # -----------------------------------------------------------------------------
-# Processamento e Leitura de Dados
+# Processamento e Tratamento de Dados
 # -----------------------------------------------------------------------------
 def get_export_url(url: str) -> str:
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
@@ -414,12 +411,42 @@ def get_export_url(url: str) -> str:
   return None
 
 
+def tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+  """Converte colunas que parecem números ou moeda para formato numérico correto."""
+  df_limpo = df.copy()
+  for col in df_limpo.columns:
+    # Se já for número, pula
+    if pd.api.types.is_numeric_dtype(df_limpo[col]):
+      continue
+
+    # Tenta converter colunas de texto contendo números/moedas
+    if df_limpo[col].dtype == "object":
+      try:
+        # Copia e limpa caracteres comuns de formatação
+        s_limpa = (
+            df_limpo[col]
+            .astype(str)
+            .str.replace("R$", "", regex=False)
+            .str.replace(" ", "", regex=False)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .str.strip()
+        )
+        converted = pd.to_numeric(s_limpa, errors="coerce")
+        if converted.notna().sum() > len(df_limpo) * 0.4:
+          df_limpo[col] = converted
+      except Exception:
+        pass
+  return df_limpo
+
+
 @st.cache_data(ttl=300)
 def carregar_todas_abas(url: str):
   export_url = get_export_url(url)
   if not export_url:
     raise ValueError("Link do Google Sheets inválido.")
-  return pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
+  dict_raw = pd.read_excel(export_url, sheet_name=None, engine="openpyxl")
+  return {nome: tratar_dataframe(df) for nome, df in dict_raw.items()}
 
 
 def preparar_contexto_completo(dict_dfs):
@@ -526,12 +553,15 @@ if btn_carregar or ("dict_dfs" not in st.session_state):
   if arquivo_local:
     try:
       if arquivo_local.name.endswith(".csv"):
-        st.session_state["dict_dfs"] = {"Dados": pd.read_csv(arquivo_local)}
+        st.session_state["dict_dfs"] = {
+            "Dados": tratar_dataframe(pd.read_csv(arquivo_local))
+        }
       else:
-        st.session_state["dict_dfs"] = pd.read_excel(
-            arquivo_local, sheet_name=None
-        )
-      st.toast("Planilha sincronizada!", icon="💎")
+        dfs_raw = pd.read_excel(arquivo_local, sheet_name=None)
+        st.session_state["dict_dfs"] = {
+            k: tratar_dataframe(v) for k, v in dfs_raw.items()
+        }
+      st.toast("Planilha sincronizada e tratada!", icon="💎")
     except Exception as e:
       st.error(f"Erro ao ler arquivo: {e}")
   elif sheet_url:
@@ -765,7 +795,7 @@ BASE DE DADOS COMPLETA:
             except Exception as e:
               st.error(f"Erro na consulta: {e}")
 
-  # --- 2. GERADOR DE GRÁFICOS (CORRIGIDO) ---
+  # --- 2. GERADOR DE GRÁFICOS (INTELIGENTE E PRECISO) ---
   with tab_bi:
     c_g1, c_g2 = st.columns([1, 2])
     with c_g1:
@@ -774,7 +804,8 @@ BASE DE DADOS COMPLETA:
         prompt_chart = st.text_area(
             "Descreva o gráfico:",
             placeholder=(
-                "Ex: Crie um gráfico com os maiores clientes que produziram"
+                "Ex: quero um gráfico com as quantidades de pneus produzidos"
+                " por cliente"
             ),
         )
         btn_chart = st.form_submit_button(
@@ -790,31 +821,36 @@ BASE DE DADOS COMPLETA:
             try:
               client = genai.Client(api_key=api_key)
 
-              resumo_colunas = []
+              # Mapeamento detalhado das colunas para a IA
+              detalhes_colunas = []
               for col in df.columns:
-                amostra_vals = df[col].dropna().unique()[:5]
-                resumo_colunas.append(
-                    f"Coluna: '{col}' | Tipo: {df[col].dtype} | Exemplos de"
-                    f" valores: {list(amostra_vals)}"
+                amostra = df[col].dropna().unique()[:5]
+                detalhes_colunas.append(
+                    f"Coluna Exata: '{col}' | Tipo: {df[col].dtype} | Exemplo de"
+                    f" Valores: {list(amostra)}"
                 )
-              info_estrutura = "\n".join(resumo_colunas)
+              info_estrutura = "\n".join(detalhes_colunas)
 
               prompt_code = f"""
-Você é um especialista em Python, Pandas e Plotly Express.
-Sua tarefa é escrever um código Python válido que gere um gráfico com base no dataframe 'df'.
+Você é um Engenheiro de Dados especialista em Python, Pandas e Plotly Express.
+Sua missão é gerar APENAS o código Python necessário para criar um gráfico Plotly preciso usando o dataframe 'df'.
 
-ESTRUTURA COMPLETA DAS COLUNAS:
+INFORMAÇÕES DE TODAS AS COLUNAS DISPONÍVEIS EM 'df':
 {info_estrutura}
 
-REGRAS RÍGIDAS DE CÓDIGO:
-1. O DataFrame principal está na variável 'df'.
-2. Trabalhe APENAS com variáveis locais criadas por você no script. NÃO utilize nenhuma variável externa indefinida como 'row_text', 'text_data', etc.
-3. Se a solicitação for sobre 'maiores clientes', identifique a coluna de cliente e a coluna numérica correspondente. Faça um .groupby().sum().reset_index(), ordene de forma decrescente e selecione os top 10 (ex: df_grouped.nlargest(10, 'coluna_valor')).
-4. Armazene a figura do Plotly OBRIGATORIAMENTE na variável chamada 'fig'.
-5. Use o tema 'plotly_white'.
-6. Retorne EXCLUSIVAMENTE o bloco de código dentro de ```python ... ``` sem explicações adicionais.
+AMOSTRA DAS PRIMEIRAS LINHAS DE 'df':
+{df.head(5).to_string()}
 
-SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
+DIRETRIZES DE EXECUÇÃO:
+1. Analise os nomes das colunas acima e ESCOLHA AS COLUNAS QUE MELHOR SE ENCAIXAM no pedido do usuário.
+2. Se a coluna numérica contiver valores Nulos (NaN), use .fillna(0).
+3. Se for pedido por clientes/categorias, faça um agrupamento explícito: `df_grouped = df.groupby('NOME_COLUNA_CATEGORIA')['NOME_COLUNA_NUMERICA'].sum().reset_index()`
+4. Ordene o dataframe agrupado para mostrar os maiores valores: `df_grouped = df_grouped.sort_values(by='NOME_COLUNA_NUMERICA', ascending=False)`
+5. Se for um gráfico de barras, use `px.bar(df_grouped, x='NOME_COLUNA_CATEGORIA', y='NOME_COLUNA_NUMERICA', title=...)` ou invertido se for horizontal.
+6. A figura Plotly OBRIGATORIAMENTE deve ser atribuída à variável `fig`.
+7. Retorne EXCLUSIVAMENTE o código em um bloco ```python ... ```. Não inclua nenhum texto antes ou depois do bloco.
+
+PEDIDO DO USUÁRIO: {prompt_chart}
 """
 
               res = client.models.generate_content(
@@ -829,9 +865,12 @@ SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
                   scope["fig"].update_layout(template="plotly_white")
                   st.plotly_chart(scope["fig"], use_container_width=True)
                 else:
-                  st.error("A variável 'fig' não foi encontrada no código.")
+                  st.error(
+                      "A variável 'fig' não foi gerada corretamente pelo"
+                      " código."
+                  )
               else:
-                st.error("Não foi possível extrair o código Python gerado.")
+                st.error("Não foi possível processar o código para o gráfico.")
             except Exception as e:
               st.error(f"Erro ao criar gráfico: {e}")
 
