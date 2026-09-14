@@ -10,6 +10,7 @@ from google.genai import types
 import openpyxl
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 # -----------------------------------------------------------------------------
@@ -28,7 +29,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -135,7 +136,6 @@ st.markdown(
         margin-bottom: 12px;
     }
     
-    /* Mensagem do Usuário */
     [data-testid="stChatMessage"]:nth-child(even) {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -143,32 +143,38 @@ st.markdown(
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
     }
     
-    /* Mensagem do Assistente / IA */
     [data-testid="stChatMessage"]:nth-child(odd) {
         background-color: #F1F5F9 !important;
         border: 1px solid #E2E8F0 !important;
         border-left: 4px solid #0F172A !important;
     }
 
-    /* Ajustes Finos nos Tab Headers */
+    /* --------------------------------------------------------- */
+    /* AMPLIAÇÃO DAS ABAS (MUITO MAIORES E DESTAQUE VISUAL)      */
+    /* --------------------------------------------------------- */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #F1F5F9;
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid #E2E8F0;
+        gap: 16px !important;
+        background-color: #E2E8F0 !important;
+        padding: 10px !important;
+        border-radius: 16px !important;
+        border: 1px solid #CBD5E1 !important;
+        margin-bottom: 24px !important;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 16px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: #64748B;
+        border-radius: 12px !important;
+        padding: 16px 32px !important; /* Aumentado a altura e largura dos botões */
+        font-weight: 800 !important;
+        font-size: 1.3rem !important; /* Fonte bem maior */
+        color: #334155 !important;
+        transition: all 0.2s ease-in-out !important;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        background-color: #2563EB !important;
+        color: #FFFFFF !important; /* Cor branca quando selecionada para destaque */
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3) !important;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        display: none !important;
     }
 
     /* Botão Principal Estilizado */
@@ -177,8 +183,9 @@ st.markdown(
         color: white !important;
         border: none !important;
         border-radius: 8px !important;
-        padding: 0.5rem 1rem !important;
-        font-weight: 600 !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 700 !important;
+        font-size: 1rem !important;
         box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
     }
     .stButton > button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] > button:hover {
@@ -315,7 +322,7 @@ init_db()
 
 
 # -----------------------------------------------------------------------------
-# Módulo de Autenticação (Com suporte à tecla ENTER)
+# Módulo de Autenticação
 # -----------------------------------------------------------------------------
 def gerenciar_autenticacao():
   if "logged_in" not in st.session_state:
@@ -758,7 +765,7 @@ BASE DE DADOS COMPLETA:
             except Exception as e:
               st.error(f"Erro na consulta: {e}")
 
-  # --- 2. GERADOR DE GRÁFICOS (REAJUSTADO) ---
+  # --- 2. GERADOR DE GRÁFICOS (CORRIGIDO) ---
   with tab_bi:
     c_g1, c_g2 = st.columns([1, 2])
     with c_g1:
@@ -783,7 +790,6 @@ BASE DE DADOS COMPLETA:
             try:
               client = genai.Client(api_key=api_key)
 
-              # Mapeamento completo dos tipos de dados e amostra de valores únicos para precisão da IA
               resumo_colunas = []
               for col in df.columns:
                 amostra_vals = df[col].dropna().unique()[:5]
@@ -794,23 +800,19 @@ BASE DE DADOS COMPLETA:
               info_estrutura = "\n".join(resumo_colunas)
 
               prompt_code = f"""
-Você é um especialista em geração de gráficos com Plotly Express em Python.
-Sua tarefa é gerar APENAS o código Python para criar o gráfico solicitado pelo usuário.
+Você é um especialista em Python, Pandas e Plotly Express.
+Sua tarefa é escrever um código Python válido que gere um gráfico com base no dataframe 'df'.
 
-ESTRUTURA COMPLETA DA PLANILHA DO USUÁRIO ({len(df)} linhas totais):
+ESTRUTURA COMPLETA DAS COLUNAS:
 {info_estrutura}
 
-AMOSTRA DE DADOS DAS PRIMEIRAS LINHAS:
-{df.head(10).to_string()}
-
-REGRAS OBRIGATÓRIAS:
-1. O DataFrame principal chama-se 'df' (possui TODAS as {len(df)} linhas da planilha).
-2. Se o usuário pedir por 'clientes', selecione com precisão a coluna correspondente a Cliente / Razão Social / Empresa (NÃO confunda com Vendedor ou Representante).
-3. Faça SEMPRE o agrupamento necessário (df.groupby) e a agregação de somatório/contagem na coluna numérica adequada.
-4. Ordene os resultados (ex: .sort_values ou .nlargest) para exibir os maiores ou menores conforme solicitado.
-5. Armazene o resultado do gráfico Plotly na variável 'fig'.
-6. Utilize o tema 'plotly_white'.
-7. Retorne EXCLUSIVAMENTE o bloco de código em ```python ... ``` sem nenhum outro texto explicativo.
+REGRAS RÍGIDAS DE CÓDIGO:
+1. O DataFrame principal está na variável 'df'.
+2. Trabalhe APENAS com variáveis locais criadas por você no script. NÃO utilize nenhuma variável externa indefinida como 'row_text', 'text_data', etc.
+3. Se a solicitação for sobre 'maiores clientes', identifique a coluna de cliente e a coluna numérica correspondente. Faça um .groupby().sum().reset_index(), ordene de forma decrescente e selecione os top 10 (ex: df_grouped.nlargest(10, 'coluna_valor')).
+4. Armazene a figura do Plotly OBRIGATORIAMENTE na variável chamada 'fig'.
+5. Use o tema 'plotly_white'.
+6. Retorne EXCLUSIVAMENTE o bloco de código dentro de ```python ... ``` sem explicações adicionais.
 
 SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
 """
@@ -820,13 +822,16 @@ SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
               )
               match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
               if match:
-                scope = {"df": df, "px": px, "pd": pd}
-                exec(match.group(1), globals(), scope)
+                codigo_gerado = match.group(1)
+                scope = {"df": df.copy(), "px": px, "go": go, "pd": pd}
+                exec(codigo_gerado, scope)
                 if "fig" in scope:
                   scope["fig"].update_layout(template="plotly_white")
                   st.plotly_chart(scope["fig"], use_container_width=True)
+                else:
+                  st.error("A variável 'fig' não foi encontrada no código.")
               else:
-                st.error("Não foi possível gerar a estrutura do gráfico.")
+                st.error("Não foi possível extrair o código Python gerado.")
             except Exception as e:
               st.error(f"Erro ao criar gráfico: {e}")
 
