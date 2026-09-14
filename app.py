@@ -13,73 +13,175 @@ import plotly.express as px
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# Configuração da Página e Estilização Visual Avançada
+# Configuração da Página
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="DataSight Analytics Pro Enterprise",
-    page_icon="⚡",
+    page_title="DataSight Analytics Enterprise",
+    page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# -----------------------------------------------------------------------------
+# Design System & Estilização CSS Enterprise
+# -----------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    /* Estilo Geral da Aplicação */
-    .stApp {
-        background-color: #f8fafc;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Cartões KPI Customizados */
-    .kpi-card {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 18px 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .kpi-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    .kpi-title {
-        font-size: 0.8rem;
-        color: #64748b;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .kpi-value {
-        font-size: 1.8rem;
-        color: #0f172a;
-        font-weight: 700;
-        margin-top: 4px;
-    }
-    .kpi-sub-pos {
-        font-size: 0.8rem;
-        color: #10b981;
-        font-weight: 600;
-        margin-top: 4px;
-    }
-    .kpi-sub-neg {
-        font-size: 0.8rem;
-        color: #ef4444;
-        font-weight: 600;
-        margin-top: 4px;
-    }
-    .kpi-sub-neu {
-        font-size: 0.8rem;
-        color: #64748b;
-        font-weight: 500;
-        margin-top: 4px;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* Ajustes Finos de Botões e Tabs */
-    .stButton>button {
-        border-radius: 8px;
+    .stApp {
+        background-color: #F8FAFC;
+    }
+
+    /* Ocultar elementos desnecessários do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Top Header Bar */
+    .executive-header {
+        background: #ffffff;
+        padding: 20px 28px;
+        border-radius: 16px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.03);
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .header-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0F172A;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .header-badge {
+        background: #EFF6FF;
+        color: #2563EB;
+        padding: 6px 12px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
         font-weight: 600;
+        border: 1px solid #BFDBFE;
+    }
+
+    /* KPI Cards Pro */
+    .kpi-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .kpi-card-pro {
+        background: #FFFFFF;
+        padding: 20px;
+        border-radius: 14px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        transition: all 0.2s ease-in-out;
+        position: relative;
+        overflow: hidden;
+    }
+    .kpi-card-pro::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: #2563EB;
+    }
+    .kpi-card-pro:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+        border-color: #CBD5E1;
+    }
+    .kpi-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .kpi-num {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin: 6px 0 4px 0;
+        letter-spacing: -0.02em;
+    }
+    .kpi-footer {
+        font-size: 0.78rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .kpi-pos { color: #16A34A; }
+    .kpi-neg { color: #DC2626; }
+    .kpi-neu { color: #64748B; }
+
+    /* Estilização Customizada do Chat Copilot */
+    .stChatMessage {
+        background-color: transparent !important;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+    }
+    
+    /* Mensagem do Usuário */
+    [data-testid="stChatMessage"]:nth-child(even) {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-left: 4px solid #2563EB !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    }
+    
+    /* Mensagem do Assistente / IA */
+    [data-testid="stChatMessage"]:nth-child(odd) {
+        background-color: #F1F5F9 !important;
+        border: 1px solid #E2E8F0 !important;
+        border-left: 4px solid #0F172A !important;
+    }
+
+    /* Ajustes Finos nos Tab Headers */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #F1F5F9;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #64748B;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Botão Principal Estilizado */
+    .stButton > button[kind="primary"] {
+        background-color: #2563EB !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #1D4ED8 !important;
     }
     </style>
 """,
@@ -88,15 +190,12 @@ st.markdown(
 
 
 # -----------------------------------------------------------------------------
-# Criptografia Nativa
+# Criptografia & Banco de Dados
 # -----------------------------------------------------------------------------
 def gerar_hash_senha(senha: str) -> str:
   return hashlib.sha256(senha.encode("utf-8")).hexdigest()
 
 
-# -----------------------------------------------------------------------------
-# Banco de Dados
-# -----------------------------------------------------------------------------
 def init_db():
   conn = sqlite3.connect("datasight_users.db")
   cursor = conn.cursor()
@@ -209,29 +308,34 @@ init_db()
 
 
 # -----------------------------------------------------------------------------
-# Autenticação
+# Módulo de Autenticação
 # -----------------------------------------------------------------------------
 def gerenciar_autenticacao():
   if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
   if not st.session_state["logged_in"]:
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
       st.markdown(
-          "<h1 style='text-align: center;'>⚡ DataSight Pro</h1>",
+          """
+            <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="font-size: 2.2rem; font-weight: 800; color: #0F172A; margin: 0;">💎 DataSight</h1>
+                <p style="color: #64748B; font-size: 0.95rem; margin-top: 4px;">Plataforma Executiva de Analytics & Inteligência</p>
+            </div>
+        """,
           unsafe_allow_html=True,
       )
-      st.caption("Plataforma Executiva de Analytics & Inteligência de Dados")
 
-      aba_login, aba_cadastro = st.tabs(["🔑 Login", "📝 Novo Cadastro"])
+      aba_login, aba_cadastro = st.tabs(["🔒 Login", "✨ Criar Conta"])
 
       with aba_login:
         usuario = st.text_input("Usuário", key="login_user")
         senha = st.text_input("Senha", type="password", key="login_pass")
 
         if st.button(
-            "Entrar no Sistema", use_container_width=True, type="primary"
+            "Acessar Plataforma", use_container_width=True, type="primary"
         ):
           dados_user = autenticar_usuario(usuario, senha)
           if dados_user:
@@ -244,12 +348,12 @@ def gerenciar_autenticacao():
             )
             st.rerun()
           else:
-            st.error("Usuário ou senha incorretos.")
+            st.error("Credenciais inválidas.")
 
       with aba_cadastro:
-        novo_user = st.text_input("Usuário", key="cad_user")
+        novo_user = st.text_input("Novo Usuário", key="cad_user")
         nova_senha = st.text_input(
-            "Senha", type="password", key="cad_pass"
+            "Sua Senha", type="password", key="cad_pass"
         )
         nova_api_key = st.text_input(
             "Gemini API Key", type="password", key="cad_key"
@@ -258,7 +362,7 @@ def gerenciar_autenticacao():
             "Link Google Sheets", key="cad_url"
         )
 
-        if st.button("Cadastrar Conta", use_container_width=True):
+        if st.button("Concluir Cadastro", use_container_width=True):
           if not novo_user or not nova_senha:
             st.warning("Preencha usuário e senha.")
           else:
@@ -278,7 +382,7 @@ if not gerenciar_autenticacao():
 
 
 # -----------------------------------------------------------------------------
-# Processamento de Dados
+# Processamento e Leitura de Dados
 # -----------------------------------------------------------------------------
 def get_export_url(url: str) -> str:
   match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
@@ -324,7 +428,7 @@ def gerar_pdf(
   pdf.cell(
       0,
       10,
-      "Gerado por DataSight Analytics Pro Enterprise",
+      "Gerado por DataSight Analytics Enterprise",
       new_x="LMARGIN",
       new_y="NEXT",
       align="L",
@@ -333,7 +437,7 @@ def gerar_pdf(
 
   pdf.set_font("Helvetica", "B", 14)
   pdf.set_text_color(15, 23, 42)
-  pdf.cell(0, 10, "1. Métricas Chave", new_x="LMARGIN", new_y="NEXT")
+  pdf.cell(0, 10, "1. Métricas da Base", new_x="LMARGIN", new_y="NEXT")
 
   pdf.set_font("Helvetica", "", 11)
   pdf.set_text_color(51, 65, 85)
@@ -349,7 +453,7 @@ def gerar_pdf(
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(15, 23, 42)
     pdf.cell(
-        0, 10, "2. Diagnóstico da Inteligência", new_x="LMARGIN", new_y="NEXT"
+        0, 10, "2. Diagnóstico de IA", new_x="LMARGIN", new_y="NEXT"
     )
     texto_limpo = resumo_ia.encode("latin-1", "replace").decode("latin-1")
     pdf.set_font("Helvetica", "", 10)
@@ -360,19 +464,19 @@ def gerar_pdf(
 
 
 # -----------------------------------------------------------------------------
-# Barra Lateral Estilizada
+# Sidebar
 # -----------------------------------------------------------------------------
 with st.sidebar:
-  st.markdown("### ⚡ DataSight Pro")
-  st.write(f"👤 **{st.session_state.get('username')}**")
+  st.markdown("### 💎 DataSight Pro")
+  st.caption(f"Usuário ativo: **{st.session_state.get('username')}**")
 
-  if st.button("🚪 Sair", use_container_width=True):
+  if st.button("Sair da Sessão", use_container_width=True):
     st.session_state.clear()
     st.rerun()
 
   st.divider()
 
-  with st.expander("⚙️ Configurações & Conexões", expanded=False):
+  with st.expander("⚙️ Integrações & API", expanded=False):
     api_key = st.text_input(
         "Gemini API Key",
         value=st.session_state.get("api_key", ""),
@@ -381,25 +485,23 @@ with st.sidebar:
     sheet_url = st.text_input(
         "Google Sheets URL", value=st.session_state.get("sheet_url", "")
     )
-    if st.button("Salvar Credenciais", use_container_width=True):
+    if st.button("Salvar Conexões", use_container_width=True):
       atualizar_configuracoes_usuario(
           st.session_state["username"], api_key, sheet_url
       )
       st.session_state["api_key"] = api_key
       st.session_state["sheet_url"] = sheet_url
-      st.success("Salvo com sucesso!")
+      st.success("Salvo!")
 
-  st.subheader("📁 Conectar Dados")
-  arquivo_local = st.file_uploader("Upload de Planilha", type=["xlsx", "csv"])
+  st.markdown("#### 📂 Fonte de Dados")
+  arquivo_local = st.file_uploader(
+      "Upload Planilha (XLSX / CSV)", type=["xlsx", "csv"]
+  )
   btn_carregar = st.button(
-      "🔄 Sincronizar Fonte de Dados",
-      use_container_width=True,
-      type="primary",
+      "Sincronizar Dados", use_container_width=True, type="primary"
   )
 
-# -----------------------------------------------------------------------------
-# Carregamento de Dados
-# -----------------------------------------------------------------------------
+# Carregamento de dados
 if btn_carregar or ("dict_dfs" not in st.session_state):
   if arquivo_local:
     try:
@@ -409,14 +511,14 @@ if btn_carregar or ("dict_dfs" not in st.session_state):
         st.session_state["dict_dfs"] = pd.read_excel(
             arquivo_local, sheet_name=None
         )
-      st.toast("Planilha local carregada!", icon="⚡")
+      st.toast("Planilha sincronizada!", icon="💎")
     except Exception as e:
       st.error(f"Erro ao ler arquivo: {e}")
   elif sheet_url:
     try:
-      with st.spinner("Conectando ao Google Sheets..."):
+      with st.spinner("Sincronizando Google Sheets..."):
         st.session_state["dict_dfs"] = carregar_todas_abas(sheet_url)
-        st.toast("Google Sheets sincronizado!", icon="⚡")
+        st.toast("Google Sheets conectado!", icon="💎")
     except Exception as e:
       st.error(f"Erro na conexão: {e}")
 
@@ -426,21 +528,31 @@ if btn_carregar or ("dict_dfs" not in st.session_state):
 if "dict_dfs" in st.session_state:
   lista_abas = list(st.session_state["dict_dfs"].keys())
 
-  c_title, c_aba = st.columns([3, 1])
-  with c_aba:
-    aba_nome = st.selectbox("📑 Aba do Excel:", lista_abas)
+  # Top Bar Executiva
+  c_head1, c_head2 = st.columns([3, 1])
+  with c_head1:
+    st.markdown(
+        """
+        <div class="executive-header">
+            <div>
+                <h1 class="header-title">Dashboard Executivo</h1>
+                <span style="color: #64748B; font-size: 0.85rem;">Inteligência de Dados e Analytics em Tempo Real</span>
+            </div>
+            <span class="header-badge">● Sistema Conectado</span>
+        </div>
+    """,
+        unsafe_allow_html=True,
+    )
+  with c_head2:
+    aba_nome = st.selectbox("Selecione a Aba:", lista_abas)
 
   df_original = st.session_state["dict_dfs"][aba_nome].copy()
 
-  # --- FILTROS AVANÇADOS (CATEGÓRICOS + TEMPORAIS) ---
-  with st.expander(
-      "🔍 Filtros Globais Avançados (Data e Categorias)", expanded=True
-  ):
+  # Filtros Globais
+  with st.expander("🔍 Filtros de Segmentação", expanded=False):
     f_col1, f_col2 = st.columns(2)
-
     df_filtrado = df_original.copy()
 
-    # Detecção automática de colunas de data
     cols_data = []
     for c in df_original.columns:
       if pd.api.types.is_datetime64_any_dtype(df_original[c]):
@@ -456,13 +568,13 @@ if "dict_dfs" in st.session_state:
 
     with f_col1:
       if cols_data:
-        col_data_sel = st.selectbox("📅 Coluna Temporal Detectada:", cols_data)
+        col_data_sel = st.selectbox("Filtrar por Data:", cols_data)
         min_date = df_original[col_data_sel].min()
         max_date = df_original[col_data_sel].max()
 
         if pd.notna(min_date) and pd.notna(max_date):
           intervalo_data = st.date_input(
-              "Intervalo de Datas:",
+              "Período:",
               value=(min_date.date(), max_date.date()),
               min_value=min_date.date(),
               max_value=max_date.date(),
@@ -473,21 +585,14 @@ if "dict_dfs" in st.session_state:
                 df_original[col_data_sel].dt.date <= data_fim
             )
             df_filtrado = df_filtrado[mask_data]
-      else:
-        st.info(
-            "Nenhuma coluna do tipo Data/Datetime identificada automaticamente."
-        )
 
     with f_col2:
       col_filtro = st.selectbox(
-          "Categorias / Coluna de Atributo:",
-          ["(Nenhum)"] + list(df_original.columns),
+          "Filtrar por Atributo:", ["(Nenhum)"] + list(df_original.columns)
       )
       if col_filtro != "(Nenhum)":
         valores_unicos = df_original[col_filtro].dropna().unique().tolist()
-        val_selecionados = st.multiselect(
-            f"Valores de '{col_filtro}':", valores_unicos
-        )
+        val_selecionados = st.multiselect("Valores:", valores_unicos)
         if val_selecionados:
           df_filtrado = df_filtrado[
               df_filtrado[col_filtro].isin(val_selecionados)
@@ -495,15 +600,10 @@ if "dict_dfs" in st.session_state:
 
   df = df_filtrado
 
-  with c_title:
-    st.title(f"📊 Dashboard Executivo — {aba_nome}")
-
-  # --- NOVOS KPIs COM VARIAÇÃO (DELTA) AUTOMÁTICA ---
-  k1, k2, k3, k4 = st.columns(4)
+  # Cálculo Inteligente das Métricas
   cols_num = df.select_dtypes(include=["number"]).columns
-
-  delta_text = "Em relação ao período"
-  delta_class = "kpi-sub-neu"
+  delta_text = "Estável"
+  delta_class = "kpi-neu"
   soma_val = "N/A"
   media_val = "N/A"
   nome_col = cols_num[0] if len(cols_num) > 0 else "Métrica"
@@ -521,75 +621,54 @@ if "dict_dfs" in st.session_state:
         var_pct = ((val_rec - val_ant) / val_ant) * 100
         if var_pct > 0:
           delta_text = f"↑ +{var_pct:.1f}% vs período anterior"
-          delta_class = "kpi-sub-pos"
+          delta_class = "kpi-pos"
         elif var_pct < 0:
           delta_text = f"↓ {var_pct:.1f}% vs período anterior"
-          delta_class = "kpi-sub-neg"
-        else:
-          delta_text = "→ 0.0% sem variação"
+          delta_class = "kpi-neg"
 
-  with k1:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Linhas Filtradas</div>
-            <div class="kpi-value">{len(df):,}</div>
-            <div class="kpi-sub-neu">Base total: {len(df_original):,}</div>
+  # KPI Cards em HTML Moderno
+  st.markdown(
+      f"""
+    <div class="kpi-container">
+        <div class="kpi-card-pro">
+            <div class="kpi-label">Linhas Filtradas</div>
+            <div class="kpi-num">{len(df):,}</div>
+            <div class="kpi-footer kpi-neu">Base Total: {len(df_original):,}</div>
         </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-  with k2:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Atributos</div>
-            <div class="kpi-value">{len(df.columns)}</div>
-            <div class="kpi-sub-neu">Colunas disponíveis</div>
+        <div class="kpi-card-pro">
+            <div class="kpi-label">Atributos (Colunas)</div>
+            <div class="kpi-num">{len(df.columns)}</div>
+            <div class="kpi-footer kpi-neu">Mapeamento concluído</div>
         </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-  with k3:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Soma ({nome_col})</div>
-            <div class="kpi-value">{soma_val}</div>
-            <div class="{delta_class}">{delta_text}</div>
+        <div class="kpi-card-pro">
+            <div class="kpi-label">Volume ({nome_col})</div>
+            <div class="kpi-num">{soma_val}</div>
+            <div class="kpi-footer {delta_class}">{delta_text}</div>
         </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-  with k4:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Média ({nome_col})</div>
-            <div class="kpi-value">{media_val}</div>
-            <div class="kpi-sub-neu">Média por item</div>
+        <div class="kpi-card-pro">
+            <div class="kpi-label">Média ({nome_col})</div>
+            <div class="kpi-num">{media_val}</div>
+            <div class="kpi-footer kpi-neu">Média por registro</div>
         </div>
+    </div>
     """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-  st.divider()
-
-  # --- ABAS DE NAVEGAÇÃO ---
+  # Tabs Corporativas
   tab_copilot, tab_bi, tab_geo, tab_explorer, tab_export = st.tabs([
-      "💬 Copilot IA (Chat)",
-      "📈 Analytics & Visualizações",
-      "🗺️ Análise Geográfica / Locais",
-      "🗃️ Explorador de Dados",
-      "📄 Relatório Executivo PDF",
+      "💬 Copilot IA",
+      "📈 Analytics & BI",
+      "🗺️ Geográfico",
+      "🗃️ Tabela de Dados",
+      "📄 Exportar Relatório",
   ])
 
-  # --- MÓDULO 1: COPILOT IA (COM MEMÓRIA / HISTÓRICO CONTEXTUAL) ---
+  # --- 1. COPILOT IA COM HISTÓRICO CONTEXTUAL ---
   with tab_copilot:
-    st.caption("Converse em tempo real sobre os seus dados.")
+    st.caption(
+        "Consulte e analise os dados da sua organização em linguagem natural."
+    )
 
     if "messages" not in st.session_state:
       st.session_state["messages"] = carregar_historico_chat(
@@ -597,34 +676,33 @@ if "dict_dfs" in st.session_state:
       )
 
     for msg in st.session_state["messages"]:
-      with st.chat_message(msg["role"]):
+      avatar = "👤" if msg["role"] == "user" else "💎"
+      with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-    if prompt_user := st.chat_input("Pergunte sobre qualquer dado ou aba..."):
+    if prompt_user := st.chat_input("Pergunte sobre os dados..."):
       if not api_key:
-        st.error("Insira sua Gemini API Key no menu lateral.")
+        st.error("Configure sua Gemini API Key na barra lateral para prosseguir.")
       else:
-        # Exibe mensagem do usuário imediatamente
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="👤"):
           st.markdown(prompt_user)
 
-        with st.chat_message("assistant"):
-          with st.spinner("Analisando com IA..."):
+        with st.chat_message("assistant", avatar="💎"):
+          with st.spinner("Analisando base de dados..."):
             try:
               client = genai.Client(api_key=api_key)
               dados_contexto = preparar_contexto_completo(
                   st.session_state["dict_dfs"]
               )
 
-              # Instropõe instruções do sistema + os dados
               system_instruction = f"""
-Você é um analista executivo de dados sênior. Responda com clareza, precisão e mantenha o histórico das conversas para responder perguntas de acompanhamento.
+Você é um consultor executivo de inteligência de dados. 
+Responda de forma clara, profissional e mantenha o contexto completo da conversa para responder perguntas contínuas de acompanhamento.
 
-DADOS DA PLANILHA PARA CONSULTA:
+BASE DE DADOS COMPLETA:
 {dados_contexto}
 """
 
-              # Monta o histórico de mensagens formatado para o SDK oficial da Google
               contents = []
               for msg in st.session_state["messages"]:
                 role_name = "user" if msg["role"] == "user" else "model"
@@ -635,7 +713,6 @@ DADOS DA PLANILHA PARA CONSULTA:
                     )
                 )
 
-              # Adiciona a mensagem atual do usuário no final do histórico
               contents.append(
                   types.Content(
                       role="user",
@@ -643,7 +720,6 @@ DADOS DA PLANILHA PARA CONSULTA:
                   )
               )
 
-              # Faz a requisição incluindo o histórico completo + system instruction
               res = client.models.generate_content(
                   model="gemini-3.6-flash",
                   contents=contents,
@@ -654,7 +730,6 @@ DADOS DA PLANILHA PARA CONSULTA:
 
               st.markdown(res.text)
 
-              # Salva no histórico da sessão do Streamlit
               st.session_state["messages"].append(
                   {"role": "user", "content": prompt_user}
               )
@@ -663,49 +738,44 @@ DADOS DA PLANILHA PARA CONSULTA:
               )
               st.session_state["ultimo_resumo_ia"] = res.text
 
-              # Salva no banco SQLite
               salvar_historico_chat(
                   st.session_state["username"], prompt_user, res.text
               )
 
             except Exception as e:
-              st.error(f"Erro ao consultar IA: {e}")
+              st.error(f"Erro na consulta: {e}")
 
-  # --- MÓDULO 2: ANALYTICS & GRÁFICOS ---
+  # --- 2. GENERATOR DE GRÁFICOS ---
   with tab_bi:
-    st.subheader(f"Geração de Gráficos Inteligentes — {aba_nome}")
-
     c_g1, c_g2 = st.columns([1, 2])
     with c_g1:
       with st.form("form_chart"):
+        st.markdown("#### Gerar Visualização")
         prompt_chart = st.text_area(
-            "Descreva o gráfico desejado:",
-            placeholder=(
-                "Ex: Crie um gráfico de linhas mostrando a evolução de vendas"
-                " no tempo"
-            ),
+            "Descreva o gráfico:",
+            placeholder="Ex: Crie um gráfico de barras comparando as categorias",
         )
         btn_chart = st.form_submit_button(
-            "Gerar Visualização", use_container_width=True, type="primary"
+            "Gerar Gráfico", use_container_width=True, type="primary"
         )
 
     with c_g2:
       if btn_chart and prompt_chart:
         if not api_key:
-          st.error("Insira sua API Key na barra lateral.")
+          st.error("Informe a API Key na barra lateral.")
         else:
-          with st.spinner("Desenhando gráfico..."):
+          with st.spinner("Desenhando..."):
             try:
               client = genai.Client(api_key=api_key)
               prompt_code = f"""
-Escreva APENAS código Python executável usando plotly.express (px) para criar o gráfico solicitado.
-Armazene o objeto na variável 'fig'.
-Use o tema 'plotly_white' para um visual limpo e profissional.
+Escreva APENAS código Python com plotly.express (px).
+Guarde o objeto na variável 'fig'.
+Use o tema 'plotly_white'.
 DataFrame 'df':
-{df.head(100).to_string()}
+{df.head(50).to_string()}
 
 Solicitação: {prompt_chart}
-Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
+Retorne APENAS o bloco em ```python ... ```
 """
               res = client.models.generate_content(
                   model="gemini-3.6-flash", contents=prompt_code
@@ -718,11 +788,10 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
                   scope["fig"].update_layout(template="plotly_white")
                   st.plotly_chart(scope["fig"], use_container_width=True)
             except Exception as e:
-              st.error(f"Erro ao gerar gráfico: {e}")
+              st.error(f"Erro ao criar gráfico: {e}")
 
-  # --- MÓDULO 3: ANÁLISE GEOGRÁFICA ---
+  # --- 3. ANÁLISE GEOGRÁFICA ---
   with tab_geo:
-    st.subheader("🗺️ Análise de Distribuição por Localidade")
     cols_geo = [
         c
         for c in df.columns
@@ -733,8 +802,8 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
     ]
 
     if cols_geo and len(cols_num) > 0:
-      col_geo_sel = st.selectbox("Selecione a Coluna de Localidade:", cols_geo)
-      col_val_sel = st.selectbox("Selecione o Valor Métrica:", cols_num)
+      col_geo_sel = st.selectbox("Coluna de Localidade:", cols_geo)
+      col_val_sel = st.selectbox("Métrica:", cols_num)
 
       df_geo = (
           df.groupby(col_geo_sel)[col_val_sel]
@@ -747,32 +816,27 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
           x=col_geo_sel,
           y=col_val_sel,
           color=col_val_sel,
-          title=f"Distribuição de {col_val_sel} por {col_geo_sel}",
+          title=f"Distribuição por {col_geo_sel}",
           template="plotly_white",
           color_continuous_scale="Blues",
       )
       st.plotly_chart(fig_geo, use_container_width=True)
     else:
-      st.info(
-          "Para ativar esta visão, certifique-se de ter colunas de local (ex:"
-          " Estado, Cidade, Região, UF) e métricas numéricas na sua planilha."
-      )
+      st.info("Nenhuma coluna de localidade/geográfica detectada.")
 
-  # --- MÓDULO 4: EXPLORADOR DE DADOS ---
+  # --- 4. EXPLORADOR ---
   with tab_explorer:
-    st.subheader(f"Tabela de Dados — {aba_nome}")
     st.dataframe(df, use_container_width=True, height=450)
 
-  # --- MÓDULO 5: EXPORTAÇÃO PDF ---
+  # --- 5. EXPORTAR RELATÓRIO ---
   with tab_export:
-    st.subheader("📄 Gerador de Relatório Executivo")
     resumo_pdf = st.text_area(
-        "Diagnóstico / Notas do Relatório",
+        "Resumo Executivo para o PDF",
         value=st.session_state.get("ultimo_resumo_ia", ""),
         height=150,
     )
 
-    if st.button("🔨 Gerar PDF Profissional", use_container_width=True):
+    if st.button("Gerar Relatório em PDF", use_container_width=True):
       try:
         pdf_bytes = gerar_pdf(
             df=df,
@@ -780,7 +844,7 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
             titulo=f"Relatório Executivo - {aba_nome}",
         )
         st.download_button(
-            label="📥 Baixar PDF",
+            label="Baixar Arquivo PDF",
             data=bytes(pdf_bytes),
             file_name=f"Relatorio_{aba_nome}.pdf",
             mime="application/pdf",
@@ -790,4 +854,4 @@ Retorne APENAS o bloco dentro de ```python ... ``` sem explicações.
         st.error(f"Erro ao gerar PDF: {e}")
 
 else:
-  st.info("👈 Conecte uma planilha na barra lateral para iniciar.")
+  st.info("👈 Conecte uma base de dados no menu lateral para visualizar.")
