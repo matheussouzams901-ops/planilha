@@ -39,11 +39,9 @@ st.markdown(
         background-color: #F8FAFC;
     }
 
-    /* Ocultar elementos desnecessários do Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 
-    /* Top Header Bar */
     .executive-header {
         background: #ffffff;
         padding: 20px 28px;
@@ -72,7 +70,6 @@ st.markdown(
         border: 1px solid #BFDBFE;
     }
 
-    /* KPI Cards Pro */
     .kpi-container {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -128,7 +125,6 @@ st.markdown(
     .kpi-neg { color: #DC2626; }
     .kpi-neu { color: #64748B; }
 
-    /* Estilização Customizada do Chat Copilot */
     .stChatMessage {
         background-color: transparent !important;
         border-radius: 12px;
@@ -149,7 +145,6 @@ st.markdown(
         border-left: 4px solid #0F172A !important;
     }
 
-    /* AMPLIAÇÃO DAS ABAS (MUITO MAIORES E DESTAQUE VISUAL) */
     .stTabs [data-baseweb="tab-list"] {
         gap: 16px !important;
         background-color: #E2E8F0 !important;
@@ -175,7 +170,6 @@ st.markdown(
         display: none !important;
     }
 
-    /* Botão Principal Estilizado */
     .stButton > button[kind="primary"], [data-testid="stFormSubmitButton"] > button {
         background-color: #2563EB !important;
         color: white !important;
@@ -412,17 +406,12 @@ def get_export_url(url: str) -> str:
 
 
 def tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-  """Converte colunas que parecem números ou moeda para formato numérico correto."""
   df_limpo = df.copy()
   for col in df_limpo.columns:
-    # Se já for número, pula
     if pd.api.types.is_numeric_dtype(df_limpo[col]):
       continue
-
-    # Tenta converter colunas de texto contendo números/moedas
     if df_limpo[col].dtype == "object":
       try:
-        # Copia e limpa caracteres comuns de formatação
         s_limpa = (
             df_limpo[col]
             .astype(str)
@@ -594,7 +583,7 @@ if "dict_dfs" in st.session_state:
         unsafe_allow_html=True,
     )
   with c_head2:
-    aba_nome = st.selectbox("Selecione a Aba:", lista_abas)
+    aba_nome = st.selectbox("Selecione a Aba Ativa:", lista_abas)
 
   df_original = st.session_state["dict_dfs"][aba_nome].copy()
 
@@ -714,7 +703,7 @@ if "dict_dfs" in st.session_state:
       "📄 Exportar Relatório",
   ])
 
-  # --- 1. COPILOT IA COM HISTÓRICO CONTEXTUAL ---
+  # --- 1. COPILOT IA ---
   with tab_copilot:
     st.caption(
         "Consulte e analise os dados da sua organização em linguagem natural."
@@ -738,7 +727,7 @@ if "dict_dfs" in st.session_state:
           st.markdown(prompt_user)
 
         with st.chat_message("assistant", avatar="💎"):
-          with st.spinner("Analisando base de dados..."):
+          with st.spinner("Analisando base de dados completa..."):
             try:
               client = genai.Client(api_key=api_key)
               dados_contexto = preparar_contexto_completo(
@@ -749,7 +738,7 @@ if "dict_dfs" in st.session_state:
 Você é um consultor executivo de inteligência de dados. 
 Responda de forma clara, profissional e mantenha o contexto completo da conversa para responder perguntas contínuas de acompanhamento.
 
-BASE DE DADOS COMPLETA:
+BASE DE DADOS COMPLETA (TODAS AS ABAS):
 {dados_contexto}
 """
 
@@ -795,10 +784,15 @@ BASE DE DADOS COMPLETA:
             except Exception as e:
               st.error(f"Erro na consulta: {e}")
 
-  # --- 2. GERADOR DE GRÁFICOS (INTELIGENTE E PRECISO) ---
+  # --- 2. GERADOR DE GRÁFICOS (BUSCA MULTI-ABA INTELIGENTE) ---
   with tab_bi:
     c_g1, c_g2 = st.columns([1, 2])
     with c_g1:
+      aba_fonte_grafico = st.selectbox(
+          "Fonte dos Dados do Gráfico:",
+          ["🔍 Buscar em Todas as Abas (Automático)"] + lista_abas,
+      )
+
       with st.form("form_chart"):
         st.markdown("#### Gerar Visualização")
         prompt_chart = st.text_area(
@@ -817,40 +811,41 @@ BASE DE DADOS COMPLETA:
         if not api_key:
           st.error("Informe a API Key na barra lateral.")
         else:
-          with st.spinner("Analisando toda a planilha e gerando gráfico..."):
+          with st.spinner(
+              "Analisando a estrutura das abas e criando visualização..."
+          ):
             try:
               client = genai.Client(api_key=api_key)
 
-              # Mapeamento detalhado das colunas para a IA
-              detalhes_colunas = []
-              for col in df.columns:
-                amostra = df[col].dropna().unique()[:5]
-                detalhes_colunas.append(
-                    f"Coluna Exata: '{col}' | Tipo: {df[col].dtype} | Exemplo de"
-                    f" Valores: {list(amostra)}"
+              # Mapeia a estrutura de TODAS as abas para enviar para a IA
+              resumo_todas_abas = []
+              for nome_a, df_a in st.session_state["dict_dfs"].items():
+                cols_info = []
+                for c in df_a.columns:
+                  ex_vals = df_a[c].dropna().unique()[:3]
+                  cols_info.append(f"    - '{c}' ({df_a[c].dtype}): ex {list(ex_vals)}")
+                resumo_todas_abas.append(
+                    f"ABA: '{nome_a}'\n" + "\n".join(cols_info)
                 )
-              info_estrutura = "\n".join(detalhes_colunas)
+
+              contexto_abas_str = "\n\n".join(resumo_todas_abas)
 
               prompt_code = f"""
-Você é um Engenheiro de Dados especialista em Python, Pandas e Plotly Express.
-Sua missão é gerar APENAS o código Python necessário para criar um gráfico Plotly preciso usando o dataframe 'df'.
+Você é um Especialista em Data Engineering e Plotly.
+O usuário tem uma planilha contendo as seguintes abas e colunas:
 
-INFORMAÇÕES DE TODAS AS COLUNAS DISPONÍVEIS EM 'df':
-{info_estrutura}
+{contexto_abas_str}
 
-AMOSTRA DAS PRIMEIRAS LINHAS DE 'df':
-{df.head(5).to_string()}
+REGRAS OBRIGATÓRIAS:
+1. O dicionário contendo todas as abas está carregado na variável 'dict_dfs' (onde a chave é o nome da aba e o valor é o DataFrame Pandas).
+2. Se o usuário escolheu uma aba específica, use `df = dict_dfs['{aba_fonte_grafico}']`.
+3. Se for 'Buscar em Todas as Abas (Automático)', escolha a ABA MAIS ADEQUADA que de fato contenha as colunas para atender ao pedido do usuário.
+4. NUNCA escolha colunas de porcentagem ou de totais genéricos (como 'Variação vs...', 'Resultado Final') para o eixo de clientes ou nomes! Procure por colunas como 'Cliente', 'Razão Social', 'Nome', 'Vendedor', etc.
+5. Faça o agrupamento correto .groupby().sum().reset_index(), ordene e mostre os dados.
+6. A figura Plotly DEVE ser atribuída à variável `fig`.
+7. Retorne APENAS o código Python válido dentro do bloco ```python ... ```.
 
-DIRETRIZES DE EXECUÇÃO:
-1. Analise os nomes das colunas acima e ESCOLHA AS COLUNAS QUE MELHOR SE ENCAIXAM no pedido do usuário.
-2. Se a coluna numérica contiver valores Nulos (NaN), use .fillna(0).
-3. Se for pedido por clientes/categorias, faça um agrupamento explícito: `df_grouped = df.groupby('NOME_COLUNA_CATEGORIA')['NOME_COLUNA_NUMERICA'].sum().reset_index()`
-4. Ordene o dataframe agrupado para mostrar os maiores valores: `df_grouped = df_grouped.sort_values(by='NOME_COLUNA_NUMERICA', ascending=False)`
-5. Se for um gráfico de barras, use `px.bar(df_grouped, x='NOME_COLUNA_CATEGORIA', y='NOME_COLUNA_NUMERICA', title=...)` ou invertido se for horizontal.
-6. A figura Plotly OBRIGATORIAMENTE deve ser atribuída à variável `fig`.
-7. Retorne EXCLUSIVAMENTE o código em um bloco ```python ... ```. Não inclua nenhum texto antes ou depois do bloco.
-
-PEDIDO DO USUÁRIO: {prompt_chart}
+SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
 """
 
               res = client.models.generate_content(
@@ -859,18 +854,20 @@ PEDIDO DO USUÁRIO: {prompt_chart}
               match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
               if match:
                 codigo_gerado = match.group(1)
-                scope = {"df": df.copy(), "px": px, "go": go, "pd": pd}
+                scope = {
+                    "dict_dfs": st.session_state["dict_dfs"],
+                    "px": px,
+                    "go": go,
+                    "pd": pd,
+                }
                 exec(codigo_gerado, scope)
                 if "fig" in scope:
                   scope["fig"].update_layout(template="plotly_white")
                   st.plotly_chart(scope["fig"], use_container_width=True)
                 else:
-                  st.error(
-                      "A variável 'fig' não foi gerada corretamente pelo"
-                      " código."
-                  )
+                  st.error("Não foi possível gerar a figura Plotly ('fig').")
               else:
-                st.error("Não foi possível processar o código para o gráfico.")
+                st.error("Não foi possível processar o código gerado.")
             except Exception as e:
               st.error(f"Erro ao criar gráfico: {e}")
 
