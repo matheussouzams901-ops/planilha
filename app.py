@@ -172,16 +172,23 @@ st.markdown(
     }
 
     /* Botão Principal Estilizado */
-    .stButton > button[kind="primary"] {
+    .stButton > button[kind="primary"], [data-testid="stFormSubmitButton"] > button {
         background-color: #2563EB !important;
+        color: white !important;
         border: none !important;
         border-radius: 8px !important;
         padding: 0.5rem 1rem !important;
         font-weight: 600 !important;
         box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
     }
-    .stButton > button[kind="primary"]:hover {
+    .stButton > button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] > button:hover {
         background-color: #1D4ED8 !important;
+    }
+
+    /* Remover borda externa do st.form */
+    [data-testid="stForm"] {
+        border: none !important;
+        padding: 0 !important;
     }
     </style>
 """,
@@ -308,7 +315,7 @@ init_db()
 
 
 # -----------------------------------------------------------------------------
-# Módulo de Autenticação
+# Módulo de Autenticação (Com suporte à tecla ENTER)
 # -----------------------------------------------------------------------------
 def gerenciar_autenticacao():
   if "logged_in" not in st.session_state:
@@ -331,48 +338,54 @@ def gerenciar_autenticacao():
       aba_login, aba_cadastro = st.tabs(["🔒 Login", "✨ Criar Conta"])
 
       with aba_login:
-        usuario = st.text_input("Usuário", key="login_user")
-        senha = st.text_input("Senha", type="password", key="login_pass")
+        with st.form(key="login_form", clear_on_submit=False):
+          usuario = st.text_input("Usuário", key="login_user")
+          senha = st.text_input("Senha", type="password", key="login_pass")
+          submit_login = st.form_submit_button(
+              "Acessar Plataforma", use_container_width=True
+          )
 
-        if st.button(
-            "Acessar Plataforma", use_container_width=True, type="primary"
-        ):
-          dados_user = autenticar_usuario(usuario, senha)
-          if dados_user:
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = dados_user[0]
-            st.session_state["api_key"] = dados_user[2] or ""
-            st.session_state["sheet_url"] = dados_user[3] or ""
-            st.session_state["messages"] = carregar_historico_chat(
-                dados_user[0]
-            )
-            st.rerun()
-          else:
-            st.error("Credenciais inválidas.")
+          if submit_login:
+            dados_user = autenticar_usuario(usuario, senha)
+            if dados_user:
+              st.session_state["logged_in"] = True
+              st.session_state["username"] = dados_user[0]
+              st.session_state["api_key"] = dados_user[2] or ""
+              st.session_state["sheet_url"] = dados_user[3] or ""
+              st.session_state["messages"] = carregar_historico_chat(
+                  dados_user[0]
+              )
+              st.rerun()
+            else:
+              st.error("Credenciais inválidas.")
 
       with aba_cadastro:
-        novo_user = st.text_input("Novo Usuário", key="cad_user")
-        nova_senha = st.text_input(
-            "Sua Senha", type="password", key="cad_pass"
-        )
-        nova_api_key = st.text_input(
-            "Gemini API Key", type="password", key="cad_key"
-        )
-        nova_sheet_url = st.text_input(
-            "Link Google Sheets", key="cad_url"
-        )
+        with st.form(key="cadastro_form", clear_on_submit=False):
+          novo_user = st.text_input("Novo Usuário", key="cad_user")
+          nova_senha = st.text_input(
+              "Sua Senha", type="password", key="cad_pass"
+          )
+          nova_api_key = st.text_input(
+              "Gemini API Key", type="password", key="cad_key"
+          )
+          nova_sheet_url = st.text_input(
+              "Link Google Sheets", key="cad_url"
+          )
+          submit_cad = st.form_submit_button(
+              "Concluir Cadastro", use_container_width=True
+          )
 
-        if st.button("Concluir Cadastro", use_container_width=True):
-          if not novo_user or not nova_senha:
-            st.warning("Preencha usuário e senha.")
-          else:
-            sucesso, msg = cadastrar_usuario(
-                novo_user, nova_senha, nova_api_key, nova_sheet_url
-            )
-            if sucesso:
-              st.success(msg)
+          if submit_cad:
+            if not novo_user or not nova_senha:
+              st.warning("Preencha usuário e senha.")
             else:
-              st.error(msg)
+              sucesso, msg = cadastrar_usuario(
+                  novo_user, nova_senha, nova_api_key, nova_sheet_url
+              )
+              if sucesso:
+                st.success(msg)
+              else:
+                st.error(msg)
     return False
   return True
 
@@ -745,7 +758,7 @@ BASE DE DADOS COMPLETA:
             except Exception as e:
               st.error(f"Erro na consulta: {e}")
 
-  # --- 2. GENERATOR DE GRÁFICOS ---
+  # --- 2. GERADOR DE GRÁFICOS (REAJUSTADO) ---
   with tab_bi:
     c_g1, c_g2 = st.columns([1, 2])
     with c_g1:
@@ -753,10 +766,12 @@ BASE DE DADOS COMPLETA:
         st.markdown("#### Gerar Visualização")
         prompt_chart = st.text_area(
             "Descreva o gráfico:",
-            placeholder="Ex: Crie um gráfico de barras comparando as categorias",
+            placeholder=(
+                "Ex: Crie um gráfico com os maiores clientes que produziram"
+            ),
         )
         btn_chart = st.form_submit_button(
-            "Gerar Gráfico", use_container_width=True, type="primary"
+            "Gerar Gráfico", use_container_width=True
         )
 
     with c_g2:
@@ -764,29 +779,54 @@ BASE DE DADOS COMPLETA:
         if not api_key:
           st.error("Informe a API Key na barra lateral.")
         else:
-          with st.spinner("Desenhando..."):
+          with st.spinner("Analisando toda a planilha e gerando gráfico..."):
             try:
               client = genai.Client(api_key=api_key)
-              prompt_code = f"""
-Escreva APENAS código Python com plotly.express (px).
-Guarde o objeto na variável 'fig'.
-Use o tema 'plotly_white'.
-DataFrame 'df':
-{df.head(50).to_string()}
 
-Solicitação: {prompt_chart}
-Retorne APENAS o bloco em ```python ... ```
+              # Mapeamento completo dos tipos de dados e amostra de valores únicos para precisão da IA
+              resumo_colunas = []
+              for col in df.columns:
+                amostra_vals = df[col].dropna().unique()[:5]
+                resumo_colunas.append(
+                    f"Coluna: '{col}' | Tipo: {df[col].dtype} | Exemplos de"
+                    f" valores: {list(amostra_vals)}"
+                )
+              info_estrutura = "\n".join(resumo_colunas)
+
+              prompt_code = f"""
+Você é um especialista em geração de gráficos com Plotly Express em Python.
+Sua tarefa é gerar APENAS o código Python para criar o gráfico solicitado pelo usuário.
+
+ESTRUTURA COMPLETA DA PLANILHA DO USUÁRIO ({len(df)} linhas totais):
+{info_estrutura}
+
+AMOSTRA DE DADOS DAS PRIMEIRAS LINHAS:
+{df.head(10).to_string()}
+
+REGRAS OBRIGATÓRIAS:
+1. O DataFrame principal chama-se 'df' (possui TODAS as {len(df)} linhas da planilha).
+2. Se o usuário pedir por 'clientes', selecione com precisão a coluna correspondente a Cliente / Razão Social / Empresa (NÃO confunda com Vendedor ou Representante).
+3. Faça SEMPRE o agrupamento necessário (df.groupby) e a agregação de somatório/contagem na coluna numérica adequada.
+4. Ordene os resultados (ex: .sort_values ou .nlargest) para exibir os maiores ou menores conforme solicitado.
+5. Armazene o resultado do gráfico Plotly na variável 'fig'.
+6. Utilize o tema 'plotly_white'.
+7. Retorne EXCLUSIVAMENTE o bloco de código em ```python ... ``` sem nenhum outro texto explicativo.
+
+SOLICITAÇÃO DO USUÁRIO: {prompt_chart}
 """
+
               res = client.models.generate_content(
                   model="gemini-3.6-flash", contents=prompt_code
               )
               match = re.search(r"```python\s*(.*?)\s*```", res.text, re.DOTALL)
               if match:
-                scope = {"df": df, "px": px}
+                scope = {"df": df, "px": px, "pd": pd}
                 exec(match.group(1), globals(), scope)
                 if "fig" in scope:
                   scope["fig"].update_layout(template="plotly_white")
                   st.plotly_chart(scope["fig"], use_container_width=True)
+              else:
+                st.error("Não foi possível gerar a estrutura do gráfico.")
             except Exception as e:
               st.error(f"Erro ao criar gráfico: {e}")
 
